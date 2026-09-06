@@ -1,0 +1,38 @@
+
+<Files "error.css">
+	Require all denied
+	<If "%{HTTP_REFERER} =~ m#^https?://localhost/security/#">
+		Require all granted
+	</If>
+</Files>
+
+<Files "home.css">
+	Require all denied
+	<If "%{HTTP_REFERER} =~ m#^https?://localhost/security/#">
+		Require all granted
+	</If>
+</Files>
+
+<Files "login.css">
+	Require all denied
+	<If "%{HTTP_REFERER} =~ m#^https?://localhost/security/#">
+		Require all granted
+	</If>
+</Files>
+
+<Files "register.css">
+	Require all denied
+	<If "%{HTTP_REFERER} =~ m#^https?://localhost/security/#">
+		Require all granted
+	</If>
+</Files>
+
+<Files "security_questions.css">
+	Require all denied
+	<If "%{HTTP_REFERER} =~ m#^https?://localhost/security/#">
+		Require all granted
+	</If>
+</Files>
+
+ErrorDocument 403 /security/views/error.html
+

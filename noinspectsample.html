@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Disable Inspect Option Only</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f8f8;
+      padding: 30px;
+    }
+    #customMenu {
+      position: fixed;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+      font-family: Arial;
+      font-size: 14px;
+      display: none;
+      z-index: 9999;
+    }
+    #customMenu div {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    #customMenu div:hover {
+      background-color: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <h2>Right-click menu without "Inspect"</h2>
+  <p>Try right-clicking anywhere — “Inspect” will not appear.</p>
+
+  <div id="customMenu">
+    <div onclick="history.back()">Back</div>
+    <div onclick="location.reload()">Reload</div>
+    <div onclick="window.open('view-source:' + location.href)">View Page Source</div>
+  </div>
+
+  <script>
+    const menu = document.getElementById("customMenu");
+
+    // Prevent default right-click menu
+    document.addEventListener("contextmenu", function(e) {
+      e.preventDefault();
+      menu.style.display = "block";
+      menu.style.top = e.clientY + "px";
+      menu.style.left = e.clientX + "px";
+    });
+
+    // Hide when clicking anywhere
+    document.addEventListener("click", function() {
+      menu.style.display = "none";
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+
+# Prevent users from directly opening .js files in the browser
+# Protect all .js files and allow only when Referer contains '/views/'
+<FilesMatch "\.js$">
+    Require all denied
+    <If "%{HTTP_REFERER} =~ m#/views/#">
+        Require all granted
+    </If>
+</FilesMatch>
+
+# Friendly 403 error page (absolute URL) - this forces an external redirect so the browser
+# navigates to the error page URL instead of staying on the .js URL.
+ErrorDocument 403 /security/views/error.html
+

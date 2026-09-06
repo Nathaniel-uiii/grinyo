@@ -1,0 +1,551 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background: url('../images/background.webp') center/cover no-repeat fixed;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('../images/background.webp') center/cover no-repeat fixed;
+    filter: blur(3px);
+    z-index: -2;
+}
+
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+    z-index: -1;
+}
+
+/* Navigation Bar (compact) */
+.navbar {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 24px 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.nav-container { width: 100%; padding: 0 100px; display: flex; justify-content: space-between; align-items: center; }
+.nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: opacity 0.2s ease;
+}
+
+.logo-link:hover {
+    opacity: 0.8;
+}
+
+.logo-image {
+    height: 32px;
+    width: auto;
+}
+
+.nav-logo h2 { color: #ffffff; font-size: 1.4rem; font-weight: 600; font-family: 'Inter', sans-serif; text-shadow: 0 2px 4px rgba(0,0,0,0.1); border-bottom: none !important; padding-bottom: 0; margin-bottom: 0; }
+.nav-menu { display: flex; gap: 10px; }
+.nav-link { color: #ffffff; text-decoration: none; font-weight: 500; font-family: 'Inter', sans-serif; font-size: 0.9rem; padding: 6px 12px; border-radius: 8px; transition: color 0.2s ease; cursor: pointer; }
+.nav-link:hover { background: transparent; transform: none; text-decoration: underline; }
+.nav-link.active { background: transparent; box-shadow: none; text-decoration: none; }
+
+/* Main content area */
+.main-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: 1;
+    position: relative;
+}
+
+.content-wrapper {
+    display: flex;
+    width: 100%;
+    max-width: 1200px;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-48%, -50%);
+    margin-top: -20px;
+    z-index: 1;
+}
+
+/* Narrower layout for recover.php to pull form and cake closer */
+.recover-layout.content-wrapper {
+    max-width: 900px;
+}
+.recover-layout .form-section { flex: 1; }
+.recover-layout .image-section { flex: 0.9; }
+
+.form-section {
+    flex: 1.2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+}
+
+.image-section {
+    flex: 0.8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+}
+
+.hero-image {
+    max-width: 100%;
+    max-height: 500px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Footer pinned */
+.footer {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 8px 0;
+    text-align: center;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1001;
+}
+
+.footer p {
+    color: #ffffff;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 15px;
+    z-index: 1;
+}
+
+/* Container (match register look, but for security questions container) */
+.sq-container {
+    background: rgb(214, 212, 212);
+    backdrop-filter: blur(200px);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 2px solid #820eacc2;
+    max-width: 680px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 4px 15px 2px;
+}
+
+/* Narrower container for recover.php only */
+.recover-narrow {
+    max-width: 400px;
+}
+
+.subtitle {
+    color: #820eacc2;
+    font-size: 0.85rem;
+    margin: 0;
+    text-align: center;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+/* Remove decorative gradient bar at top of form */
+.sq-container::before { display: none !important; content: none !important; }
+
+/* Header with minimal spacing */
+.form-header { 
+    margin-bottom: 0px; 
+    margin-top: 0px; 
+    text-align: center;
+}
+.form-header h1 { 
+    font-size: 1rem; 
+    margin: 0 auto; 
+    line-height: 1.0; 
+    color: #820eacc2; 
+    font-weight: 600; 
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3); 
+    display: inline-block;
+}
+
+/* Section title compact */
+h2 { font-size: 0.84rem; margin: 0 0 4px 0; padding-bottom: 2px; border-bottom-width: 1px; }
+h2::after { width: 20px; height: 2px; }
+
+/* Two-column grid with minimal spacing */
+.form-sections { display: block; width: 400px; }
+.form-group { display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.form-box { position: relative; margin: 0; }
+/* When needed, let a field span both columns (e.g., password error taking full width) */
+.form-box.span-two { grid-column: 1 / -1; }
+
+/* Label with white text for visibility */
+label {
+    position: absolute;
+    top: 2px;
+    left: 12px;
+    font-weight: 600;
+    color: #340146c2;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    pointer-events: none;
+    transition: all 0.2s ease;
+    text-transform: none;
+    margin: 0;
+    z-index: 1;
+}
+
+@media (max-width: 768px) {
+    label { font-size: 0.68rem; line-height: 1.3; }
+}
+
+/* Input container */
+.form-box {
+    position: relative;
+    margin: 0;
+}
+
+/* Password wrapper for eye icon */
+.password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding-right: 45px;
+}
+
+.password-wrapper i {
+    position: absolute;
+    right: 12px;
+    font-size: 18px;
+    cursor: pointer;
+    color: #6B7280;
+    transition: color 0.3s ease;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+.password-wrapper i.fa-eye {
+    color: #e91e63;
+}
+
+/* Inputs with minimal spacing */
+input, select {
+    width: 100%;
+    padding: 18px 12px 2px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background-color: #f9fafb;
+    transition: border-color 0.2s ease;
+    height: 40px;
+    box-sizing: border-box;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+/* Move label up when input is focused or has value */
+input:focus + label,
+input:not(:placeholder-shown) + label,
+select:focus + label,
+select:not([value=""]) + label {
+    transform: translateY(-2px) scale(0.85);
+    color: #667eea;
+    background: white;
+    padding: 0 4px;
+    left: 8px;
+    border-radius: 4px;
+}
+
+input:hover, select:hover { 
+    border-color: #b98fe0; 
+    background-color: #ffffff;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #cb66ea; /* theme accent */
+    box-shadow: 0 0 0 2px rgba(203, 102, 234, 0.12); /* subtler glow */
+}
+
+input:disabled { background: #f7fafc; color: #a0aec0; border-color: #e2e8f0; }
+
+input::placeholder { color: #a0aec0; font-style: italic; }
+
+/* Required field asterisk styling */
+.required {
+    color: #dc2626;
+    font-weight: bold;
+    margin-left: 2px;
+}
+
+/* Optional field text styling */
+.optional {
+    color: #dc2626;
+    font-weight: 500;
+    font-size: 0.7rem;
+    margin-left: 2px;
+}
+
+select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("../images/background.webp' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 10px center;
+    background-repeat: no-repeat;
+    background-size: 14px;
+    padding-right: 30px;
+}
+
+button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    margin: 8px auto 6px;
+    display: block;
+    min-width: 110px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.form-actions {
+    text-align: center;
+    margin-top: 8px;
+    display:flex; 
+    gap:10px;
+}
+
+.login-prompt {
+    color: #fefeff;
+    font-size: 0.9rem;
+    margin-top: 4px;
+}
+
+.login-prompt a {
+    color:#340146c2;
+    text-decoration: none;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.login-prompt a:hover {
+    text-decoration: underline;
+}
+
+button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+button:hover::before {
+    left: 100%;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+        0 10px 25px rgba(102, 126, 234, 0.4),
+        0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+button:active {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+}
+
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .sq-container {
+        max-width: 600px;
+        padding: 20px;
+    }
+    
+    .form-group {
+        gap: 10px 18px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .sq-container {
+        padding: 18px;
+        margin: 10px;
+        max-width: 550px;
+    }
+    
+    .form-group {
+        gap: 10px 16px;
+    }
+}
+
+@media (max-width: 768px) {
+    .main-content {
+        padding: 0;
+    }
+    
+    .sq-container {
+        padding: 8px;
+        border-radius: 10px;
+        margin: 6px;
+        max-width: 600px;
+    }
+    
+    .form-header h1 {
+        font-size: 1.4rem;
+    }
+    
+    h2 {
+        font-size: 0.95rem;
+    }
+    
+    .form-sections {
+        gap: 16px;
+    }
+    
+    .form-group {
+        gap: 6px;
+    }
+    
+    button {
+        min-width: 100%;
+        padding: 8px 12px;
+    }
+    
+    input, select {
+        padding: 6px 8px;
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-container {
+        padding: 0 15px;
+    }
+    
+    .nav-logo h2 {
+        font-size: 1.5rem;
+    }
+    
+    .nav-menu {
+        gap: 15px;
+    }
+    
+    .nav-link {
+        padding: 6px 12px;
+        font-size: 0.9rem;
+    }
+    
+    .main-content {
+        padding: 0;
+    }
+    
+    .sq-container {
+        padding: 12px;
+        border-radius: 14px;
+        margin: 6px;
+    }
+    
+    .form-header h1 {
+        font-size: 1.3rem;
+    }
+    
+    .form-sections {
+        gap: 14px;
+    }
+    
+    .form-group {
+        gap: 5px;
+    }
+    
+    input, select {
+        padding: 7px 9px;
+        font-size: 0.7rem;
+    }
+    
+    label {
+        font-size: 0.65rem;
+    }
+}
+
+/* Hide number input spinners for Zip Code field */
+#zipcode::-webkit-outer-spin-button,
+#zipcode::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* For Firefox */
+#zipcode {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+@media (max-width: 480px) {
+    .hero-image {
+        max-height: 250px;
+    }
+}

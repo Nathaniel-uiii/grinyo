@@ -1,0 +1,13 @@
+
+# Protect common image types: only allow requests that originate from the same site
+# Allow requests originating from the current local application path.
+<FilesMatch "\.(?:jpg|jpeg|png|gif|svg|webp)$">
+	Require all denied
+	<If "%{HTTP_REFERER} =~ m#^https?://localhost/security/#">
+		Require all granted
+	</If>
+</FilesMatch>
+
+# Use an absolute ErrorDocument like the friend's setup
+ErrorDocument 403 /security/views/error.html
+
