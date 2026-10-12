@@ -38,6 +38,12 @@ if (eyeicon && password) {
   };
 }
 
+// Never retain a password in browser storage.
+try {
+  sessionStorage.removeItem('login_username');
+  sessionStorage.removeItem('login_password');
+} catch (e) {}
+
 // Centralized Back-Button Guard helpers (apply/remove cleanly across cycles)
 // Stores refs on window.__backGuard so we can remove listeners reliably.
 (function initBackGuardHelpers(){
@@ -312,6 +318,18 @@ document.addEventListener('DOMContentLoaded', function(){
       // Inactive-account message stays as a field-level error on username
       showErrorMessage('username', 'Your account is inactive.');
       break;
+    case 'superadmin_on_duty':
+      if (lockoutTimer) {
+        lockoutTimer.style.display = 'block';
+        lockoutTimer.textContent = 'Another super administrator is currently on duty. Please try again after they log out.';
+      }
+      break;
+    case 'superadmin_session_ended':
+      if (lockoutTimer) {
+        lockoutTimer.style.display = 'block';
+        lockoutTimer.textContent = 'You were signed out because the super administrator duty session changed. Please log in again.';
+      }
+      break;
     case 'pending':
       showPendingModal();
       break;
@@ -320,11 +338,13 @@ document.addEventListener('DOMContentLoaded', function(){
         lockoutTimer.style.display = 'block';
         lockoutTimer.textContent = 'Your account is blocked.';
       }
+      var forgotSection = document.getElementById('forgot-section');
+      if (forgotSection) forgotSection.style.display = 'none';
       break;
   }
 
   // Account-status messages are informational and must not trigger lockout.
-  if (err === 'pending' || err === 'blocked') {
+  if (err === 'pending' || err === 'blocked' || err === 'superadmin_on_duty' || err === 'superadmin_session_ended') {
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }

@@ -49,7 +49,7 @@ if (!$connect) {
 
 add_column_if_missing($connect, 'role', "ENUM('user','admin','superadmin') NOT NULL DEFAULT 'user'");
 add_column_if_missing($connect, 'employee_id', "VARCHAR(30) NULL UNIQUE");
-add_column_if_missing($connect, 'approval_status', "ENUM('pending','approved','blocked') NOT NULL DEFAULT 'pending'");
+add_column_if_missing($connect, 'approval_status', "ENUM('pending','active','blocked') NOT NULL DEFAULT 'pending'");
 add_column_if_missing($connect, 'privileges', "VARCHAR(255) NOT NULL DEFAULT 'read_users'");
 add_column_if_missing($connect, 'created_by', "VARCHAR(9) NULL");
 add_column_if_missing($connect, 'updated_by', "VARCHAR(9) NULL");
@@ -76,7 +76,7 @@ function upsert_default_account($connect, $username, $password, $role, $employee
     $lastName = ($role === 'superadmin') ? 'Super Admin' : 'Admin';
 
     if ($existingUser) {
-        $updateSql = "UPDATE users SET password_hash = ?, role = ?, employee_id = ?, approval_status = 'approved', privileges = ?, email = ?, is_active = 1 WHERE username = ?";
+        $updateSql = "UPDATE users SET password_hash = ?, role = ?, employee_id = ?, approval_status = 'active', privileges = ?, email = ?, is_active = 1 WHERE username = ?";
         $updateStmt = mysqli_prepare($connect, $updateSql);
         if (!$updateStmt) {
             return false;
@@ -132,7 +132,7 @@ function upsert_default_account($connect, $username, $password, $role, $employee
     $province = 'Province';
     $country = 'Philippines';
     $zipCode = '0000';
-    $approval = 'approved';
+    $approval = 'active';
     $isActive = 1;
 
     mysqli_stmt_bind_param(

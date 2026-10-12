@@ -51,6 +51,32 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_province (province)
 );
 
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    session_key CHAR(32) NOT NULL UNIQUE,
+    user_id VARCHAR(9) NOT NULL,
+    name VARCHAR(160) NOT NULL,
+    role VARCHAR(30) NOT NULL,
+    section VARCHAR(80) NOT NULL,
+    browser_os VARCHAR(120) NOT NULL,
+    time_in DATETIME NOT NULL,
+    time_out DATETIME NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    details VARCHAR(255) NOT NULL,
+    INDEX idx_activity_user (user_id),
+    INDEX idx_activity_time (time_in)
+);
+
+-- One row represents the only super administrator currently on duty.
+CREATE TABLE IF NOT EXISTS superadmin_duty (
+    lock_id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    user_id VARCHAR(9) NULL,
+    session_id VARCHAR(128) NULL,
+    last_seen DATETIME NULL,
+    CONSTRAINT chk_superadmin_duty_lock CHECK (lock_id = 1)
+);
+INSERT INTO superadmin_duty (lock_id) VALUES (1);
+
 
 -- Triggers for basic validation
 DELIMITER //

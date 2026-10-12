@@ -1,4 +1,7 @@
 (function(){
+  var form = document.getElementById('security-questions-form');
+  if (!form) return;
+
       var QUESTIONS = [
         'Who is your best friend in Elementary?',
         'What is the name of your favorite pet?',
@@ -109,17 +112,19 @@
         return true;
       }
 
-      var form = document.querySelector('form');
       if (form) {
         form.setAttribute('novalidate','novalidate');
-        // If server redirected with error=required, show required messages on all fields
+        // If server redirected with error=required, show required messages only on empty fields
         (function(){
           try {
             var params = new URLSearchParams(window.location.search || '');
             var err = params.get('error');
             if (err === 'required') {
               ['q1','a1','q2','a2','q3','a3'].forEach(function(fid){
-                showErrorMessage(fid, 'This field is required');
+                var el = document.getElementById(fid);
+                if (!el) return;
+                var val = (el.tagName === 'SELECT') ? el.value : (el.value || '').trim();
+                if (val === '') showErrorMessage(fid, 'This field is required');
               });
             }
           } catch(_) {}

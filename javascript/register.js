@@ -990,6 +990,9 @@ function validateEmail(fieldId) {
 
 // Check if email already exists in database (AJAX)
 function checkEmailExists(emailValue) {
+    // Account onboarding edits an existing user. Its current email is expected to
+    // already exist, so availability checks are only meaningful during registration.
+    if (document.querySelector('form[data-skip-availability-checks="true"]')) return false;
     var emailInput = document.getElementById('email');
     if (!emailInput) return false;
 

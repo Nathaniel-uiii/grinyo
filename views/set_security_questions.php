@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     <div class="content-wrapper">
       <div class="form-section">
         <div class="sq-container">
-          <form action="" method="POST" autocomplete="off" novalidate>
+          <form action="" method="POST" id="security-questions-form" autocomplete="off" novalidate>
             <div class="form-header">
               <h1>Set Your Authentication Questions</h1>
               <p class="subtitle">These will help you recover your account if you forget your password.</p>

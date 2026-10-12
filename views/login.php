@@ -1,6 +1,8 @@
 <?php
 // Simple login: prepared statements + password_verify + basic lockout
 include '../server/db.php';
+require_once __DIR__ . '/../server/activity_log.php';
+require_once __DIR__ . '/../server/superadmin_duty.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 // If already authenticated, send to dashboard
 if (isset($_SESSION['auth_user_id'])) {
@@ -31,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 1) Find the account by username (case-sensitive) or email.
     // The role is always read from the database, never chosen by the user.
     // Use BINARY for username to enforce case sensitivity. Email remains as-is.
-    $sqlUser = "SELECT user_id, username, email, password_hash, is_active, role, approval_status, privileges FROM users WHERE (BINARY username = ? OR email = ?) LIMIT 1";
+    $sqlUser = "SELECT user_id, first_name, middle_name, last_name, extension_name, username, email, password_hash, is_active, role, approval_status, privileges, onboarding_required FROM users WHERE (BINARY username = ? OR email = ?) LIMIT 1";
     $stmtUser = mysqli_prepare($connect, $sqlUser);
     mysqli_stmt_bind_param($stmtUser, 'ss', $login, $login);
     mysqli_stmt_execute($stmtUser);
@@ -48,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     $accountRole = strtolower((string)($user['role'] ?? 'user'));
-    if ($accountRole === 'user' && (($user['approval_status'] ?? 'pending') !== 'approved')) {
+    if (($user['approval_status'] ?? 'pending') !== 'active') {
         $statusError = (($user['approval_status'] ?? 'pending') === 'blocked') ? 'blocked' : 'pending';
         header("Location: ./login.php?error=$statusError");
         exit();
@@ -63,11 +65,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
+    // Regenerate the session identifier after every successful credential check.
+    session_regenerate_id(true);
+    $accountRole = strtolower((string)($user['role'] ?? 'user'));
+    if ($accountRole === 'superadmin' && !superadmin_duty_acquire($connect, $userId, session_id())) {
+        header('Location: ./login.php?error=superadmin_on_duty');
+        exit();
+    }
+
     // 3) Success: start session
     $_SESSION['auth_user_id'] = $userId;
     $_SESSION['auth_username'] = $user['username'];
-    $_SESSION['auth_role'] = isset($user['role']) ? $user['role'] : 'user';
+    $_SESSION['auth_role'] = strtolower(trim((string)($user['role'] ?? 'user')));
     $_SESSION['auth_privileges'] = isset($user['privileges']) ? $user['privileges'] : 'read_users';
+    $accountName = trim(($user['first_name'] ?? '') . ' ' . ($user['middle_name'] ?? '') . ' ' . ($user['last_name'] ?? '') . ' ' . ($user['extension_name'] ?? ''));
+    $accountName = $accountName !== '' ? $accountName : (string)$user['username'];
+
+    if (in_array($_SESSION['auth_role'], ['user', 'admin', 'superadmin'], true) && !empty($user['onboarding_required'])) {
+        $_SESSION['activity_log_key'] = activity_log_start($connect, $userId, $accountName, $_SESSION['auth_role'], 'Administrator Onboarding', 'Successful login');
+        $_SESSION['onboarding_user_id'] = $userId;
+        $_SESSION['onboarding_stage'] = 'profile';
+        header('Location: ./admin_onboarding.php');
+        exit();
+    }
 
     // Check if user already has security questions set
     // In new schema, questions are stored on users
@@ -79,6 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rowChk = $resChk ? mysqli_fetch_assoc($resChk) : null;
     $hasSQ = ($rowChk && !empty($rowChk['q1']));
     mysqli_stmt_close($stmtChk);
+
+    $loginSection = in_array($_SESSION['auth_role'], ['admin', 'superadmin'], true)
+        ? 'Super Admin Panel'
+        : ($hasSQ ? 'Customer Dashboard' : 'Security Questions');
+    $_SESSION['activity_log_key'] = activity_log_start($connect, $userId, $accountName, $_SESSION['auth_role'], $loginSection, 'Successful login');
 
     if (in_array($_SESSION['auth_role'], ['admin', 'superadmin'], true)) {
         header('Location: ./admin.php');
@@ -110,7 +135,7 @@ $jsBase = '../javascript';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log In</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="<?php echo htmlspecialchars($cssUrl); ?>?v=1.0">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($cssUrl); ?>?v=1.1">
 </head>
 <body>
     <nav class="navbar">
@@ -148,7 +173,7 @@ $jsBase = '../javascript';
                             </div>
                         </div>
                         <div class="auth-alt">
-                            <p id="forgot-section" class="forgot" >Forgot Password? <a onclick="getRecover()">Reset Here</a></p>
+                            <p id="forgot-section" class="forgot">Forgot Password? <a href="./recover.php">Reset Here</a></p>
                         </div>
                         <div id="lockout-timer" class="lockout-timer"></div>
                         <button class="btn" type="submit">Login</button>
@@ -175,8 +200,8 @@ $jsBase = '../javascript';
             </div>
         </div>
     </div>
-    <script src="<?php echo htmlspecialchars($jsBase); ?>/disable_back.js"></script>
-    <script src="<?php echo htmlspecialchars($jsBase); ?>/login.js"></script>
+    <script src="<?php echo htmlspecialchars($jsBase); ?>/disable_back.js?v=1.3"></script>
+    <script src="<?php echo htmlspecialchars($jsBase); ?>/login.js?v=1.3"></script>
     <script src="<?php echo htmlspecialchars($jsBase); ?>/routing.js"></script>
     <script src="<?php echo htmlspecialchars($jsBase); ?>/inspect.js"></script>
 </body>

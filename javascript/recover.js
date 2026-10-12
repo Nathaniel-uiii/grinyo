@@ -47,7 +47,8 @@ function showAnswerStatus(fieldId, isCorrect) {
   div.style.textAlign = 'left';
   div.style.whiteSpace = 'normal';
   div.style.color = isCorrect ? 'green' : '#dc2626';
-  div.textContent = isCorrect ? 'Correct answer' : 'Wrong answer';
+  var questionNumber = fieldId.replace('a', '');
+  div.textContent = isCorrect ? 'Question ' + questionNumber + ': correct answer' : 'Question ' + questionNumber + ': wrong answer';
   var wrapper = fieldInput.closest ? fieldInput.closest('.password-wrapper') : null;
   var container = wrapper ? wrapper.parentNode : fieldInput.parentNode;
   var afterNode = wrapper || fieldInput;
@@ -100,6 +101,10 @@ function showAnswersBlockError(message) {
       showErrorMessage('idnum', 'Please enter ID in format: xxxx-xxxx');
     } else if (error === 'unknown_id') {
       showErrorMessage('idnum', 'ID not found');
+    } else if (error === 'blocked') {
+      showErrorMessage('idnum', 'Your account is blocked. Contact the administrator.');
+    } else if (error === 'mail') {
+      showErrorMessage('idnum', 'We could not send the PIN. Check the server email configuration and try again.');
     }
 
     if (idInput) {
@@ -117,17 +122,57 @@ function showAnswersBlockError(message) {
     }
   }
 
+  if (step === 'otp') {
+    var otpInput = document.getElementById('otp');
+    var otpForm = document.getElementById('recover-otp-form');
+    if (otpInput) {
+      if (error === 'otp_invalid') showErrorMessage('otp', 'Invalid PIN. Please try again.');
+      if (error === 'otp_expired') showErrorMessage('otp', 'This PIN has expired. Start recovery again.');
+      if (error === 'otp_locked') showErrorMessage('otp', 'Too many attempts. Start recovery again.');
+      if (error === 'otp_session') showErrorMessage('otp', 'Your recovery session expired. Start again.');
+      otpInput.addEventListener('input', function(){
+        otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
+        clearError('otp');
+      });
+    }
+    if (otpForm) {
+      otpForm.addEventListener('submit', function(e){
+        if (!/^\d{6}$/.test(otpInput ? otpInput.value : '')) {
+          e.preventDefault();
+          showErrorMessage('otp', 'Enter the six-digit PIN.');
+        }
+      });
+    }
+  }
+
   if (step === 'questions') {
     if (error === 'empty') {
-      var msg = 'This field is required';
-      showErrorMessage('a1', msg);
-      showErrorMessage('a2', msg);
-      showErrorMessage('a3', msg);
+      var missing = params.get('missing') || '';
+      ['q1', 'q2', 'q3', 'a1', 'a2', 'a3'].forEach(function(id, index){
+        if (missing.charAt(index) === '1') {
+          showErrorMessage(id, 'This field is required');
+        }
+      });
+    }
+    if (error === 'mail') {
+      showAnswersBlockError('Security questions verified, but we could not send the PIN. Check the server email configuration and try again.');
+    }
+
+    if (error === 'question_selection') {
+      var selectionStatus = params.get('status') || '';
+      ['q1', 'q2', 'q3'].forEach(function(id, index) {
+        if (selectionStatus.charAt(index) === '0') {
+          showErrorMessage(id, 'Question ' + (index + 1) + ' was not set for this account. Select one of your saved questions.');
+        }
+      });
+      if (selectionStatus === '111') {
+        showAnswersBlockError('Choose each saved security question only once.');
+      }
     }
 
     // Render per-field correctness if provided by server via status=xyz (x,y,z in {0,1})
     var status = params.get('status');
-    if (status && /^[01]{3}$/.test(status)) {
+    if (error !== 'question_selection' && status && /^[01]{3}$/.test(status)) {
       // Clear any block-level banner if present
       var be = document.getElementById('answers-error');
       if (be && be.parentNode) be.parentNode.removeChild(be);
@@ -137,51 +182,29 @@ function showAnswersBlockError(message) {
         showAnswerStatus(ids[i], bit);
       }
     }
-    // Intercept Verify: validate empties then AJAX to server for correctness without reload
-    var ansForm = document.getElementById('recover-answers-form');
-    if (ansForm && ansForm.addEventListener) {
-      ansForm.addEventListener('submit', function(e){
-        e.preventDefault();
-        e.stopPropagation();
-        var ids = ['a1','a2','a3'];
-        var anyEmpty = false;
-        for (var i = 0; i < ids.length; i++) {
-          var el = document.getElementById(ids[i]);
-          var v = (el && el.value) ? el.value.trim() : '';
-          if (v === '') { showErrorMessage(ids[i], 'This field is required'); anyEmpty = true; }
-        }
-        if (anyEmpty) return;
-        // Build form data
-        var fd = new FormData();
-        fd.append('stage', 'answers');
-        fd.append('ajax', '1');
-        fd.append('a1', (document.getElementById('a1').value || ''));
-        fd.append('a2', (document.getElementById('a2').value || ''));
-        fd.append('a3', (document.getElementById('a3').value || ''));
-        fetch('./recover.php', { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } })
-          .then(function(r){ return r.json().catch(function(){ return {}; }); })
-          .then(function(data){
-            // Clear any block banner
-            var be = document.getElementById('answers-error');
-            if (be && be.parentNode) be.parentNode.removeChild(be);
-            if (!data || data.ok === false) {
-              // If server reported empty/no_session, keep required messages already shown
-              return;
-            }
-            // Render per-field statuses
-            if (Array.isArray(data.correct)) {
-              var ids = ['a1','a2','a3'];
-              for (var i = 0; i < ids.length; i++) {
-                showAnswerStatus(ids[i], !!data.correct[i]);
-              }
-            }
-            if (data.requiredMet && data.redirect) {
-              window.location.href = data.redirect;
-            }
-          })
-          .catch(function(){ /* ignore */ });
+    // Disable chosen questions in other dropdowns
+    var qSelects = ['q1', 'q2', 'q3'];
+    function syncQuestionOptions() {
+      var selected = qSelects.map(function(id) {
+        var el = document.getElementById(id);
+        return el ? el.value : '';
+      });
+      qSelects.forEach(function(id, i) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        Array.from(el.options).forEach(function(opt) {
+          if (opt.value === '') return;
+          var usedElsewhere = selected.indexOf(opt.value) !== -1 && selected[i] !== opt.value;
+          opt.disabled = usedElsewhere;
+        });
       });
     }
+    qSelects.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', syncQuestionOptions);
+    });
+    syncQuestionOptions();
+
     ['a1','a2','a3'].forEach(function(id){
       var i = document.getElementById(id);
       if (i) i.addEventListener('input', function(){

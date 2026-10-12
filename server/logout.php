@@ -1,11 +1,17 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/activity_log.php';
+require_once __DIR__ . '/superadmin_duty.php';
 
 // Best-effort cleanup of legacy DB session state if the old table exists.
 $userId = isset($_SESSION['auth_user_id']) ? (string)$_SESSION['auth_user_id'] : '';
 if ($userId !== '') {
     require_once __DIR__ . '/db.php';
     if ($connect) {
+        activity_log_end($connect, (string)($_SESSION['activity_log_key'] ?? ''), 'Logged out');
+        if (($_SESSION['auth_role'] ?? '') === 'superadmin') {
+            superadmin_duty_release($connect, $userId, session_id());
+        }
         $tableExists = mysqli_query($connect, "SHOW TABLES LIKE 'sessions'");
         if ($tableExists && mysqli_num_rows($tableExists) > 0) {
             $sql = "UPDATE sessions

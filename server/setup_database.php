@@ -9,7 +9,7 @@ require_once __DIR__ . '/db.php';
 $checks = [
     'role' => "ENUM('user','admin','superadmin') NOT NULL DEFAULT 'user'",
     'employee_id' => "VARCHAR(30) NULL UNIQUE",
-    'approval_status' => "ENUM('pending','approved','blocked') NOT NULL DEFAULT 'pending'",
+    'approval_status' => "ENUM('pending','active','blocked') NOT NULL DEFAULT 'pending'",
     'privileges' => "VARCHAR(255) NOT NULL DEFAULT 'read_users'",
     'created_by' => "VARCHAR(9) NULL",
     'updated_by' => "VARCHAR(9) NULL"

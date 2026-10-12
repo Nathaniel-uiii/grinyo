@@ -1,5 +1,6 @@
 <?php
 include '../server/db.php';
+require_once '../server/mask.php';
 session_start();
 
 // Require reset session set by recover.php
@@ -91,9 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <header>
           <h1>Change Password</h1>
           <div class="id-username-row">
-            <span class="id-username-info">ID Number: <?php echo htmlspecialchars($user_id); ?></span>
+            <span class="id-username-info">ID Number: <?php echo htmlspecialchars(mask_id_number($user_id)); ?></span>
             <?php if ($display_username !== '') { ?>
-              <span class="id-username-info">Username: <?php echo htmlspecialchars($display_username); ?></span>
+              <span class="id-username-info">Username: <?php echo htmlspecialchars(mask_username($display_username)); ?></span>
             <?php } ?>
           </div>
         </header>
