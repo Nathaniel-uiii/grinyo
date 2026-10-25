@@ -97,3 +97,48 @@ function send_account_credentials($email, $username, $password) {
         return false;
     }
 }
+
+function send_account_deletion_notice($email, $name, $userId, $reason) {
+    $email = trim((string)$email);
+    $name = trim((string)$name);
+    $userId = trim((string)$userId);
+    $reason = trim((string)$reason);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || $reason === '' || strlen($reason) > 1000) {
+        return false;
+    }
+
+    load_mail_env();
+    $host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+    $port = (int)(getenv('SMTP_PORT') ?: 587);
+    $smtpUsername = getenv('SMTP_USERNAME');
+    $smtpPassword = getenv('SMTP_PASSWORD');
+    $from = getenv('SMTP_FROM_EMAIL') ?: $smtpUsername;
+    $fromName = getenv('SMTP_FROM_NAME') ?: 'UBE Security';
+
+    if (!$smtpUsername || !$smtpPassword || !$from) {
+        error_log('Account deletion notice email is not configured: set SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM_EMAIL.');
+        return false;
+    }
+
+    $mailer = new PHPMailer(true);
+    try {
+        $mailer->isSMTP();
+        $mailer->Host = $host;
+        $mailer->SMTPAuth = true;
+        $mailer->Username = $smtpUsername;
+        $mailer->Password = $smtpPassword;
+        $mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mailer->Port = $port;
+        $mailer->CharSet = 'UTF-8';
+        $mailer->setFrom($from, $fromName);
+        $mailer->addAddress($email);
+        $mailer->Subject = 'Your Ube Delights account has been deleted';
+        $greeting = $name !== '' ? 'Hello ' . $name . ',' : 'Hello,';
+        $mailer->Body = $greeting . "\n\nYour Ube Delights account (ID: {$userId}) has been deleted.\n\nReason provided for the deletion:\n{$reason}\n\nPlease keep this email for your records.";
+        $mailer->send();
+        return true;
+    } catch (Exception $exception) {
+        error_log('Account deletion notice email failed: ' . $mailer->ErrorInfo);
+        return false;
+    }
+}

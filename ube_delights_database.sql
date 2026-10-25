@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     session_key CHAR(32) NOT NULL UNIQUE,
     user_id VARCHAR(9) NOT NULL,
+    target_user_id VARCHAR(9) NULL,
     name VARCHAR(160) NOT NULL,
     role VARCHAR(30) NOT NULL,
     section VARCHAR(80) NOT NULL,
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     ip_address VARCHAR(45) NOT NULL,
     details VARCHAR(255) NOT NULL,
     INDEX idx_activity_user (user_id),
+    INDEX idx_activity_target_role_time (target_user_id, role, time_in),
     INDEX idx_activity_time (time_in)
 );
 

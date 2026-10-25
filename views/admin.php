@@ -25,7 +25,13 @@ $isAdmin = ($_SESSION['auth_role'] ?? 'user') === 'admin';
 $canApprove = $isSuperAdmin || $isAdmin || in_array('approve_users', $currentPrivileges, true);
 $canUpdate = $isSuperAdmin || in_array('update_accounts', $currentPrivileges, true);
 $canManage = $isSuperAdmin || in_array('manage_users', $currentPrivileges, true);
+$showCreateAccountResult = false;
 $accountMessage = '';
+if (array_key_exists('create_account_result', $_SESSION)) {
+    $accountMessage = (string)$_SESSION['create_account_result'];
+    unset($_SESSION['create_account_result']);
+    // Keep the result in the page status message without reopening the dialog.
+}
 $onDutySuperadminId = '';
 
 function next_privileged_user_id($connect)
@@ -91,11 +97,8 @@ function account_display_status($account)
     return $status;
 }
 
-// Counts super administrators that occupy a slot. Blocked accounts do not
-// count, so blocking one frees a slot for another super administrator.
-// Deliberately ignores onboarding_required: a freshly created account is
-// hidden from the list until onboarding finishes, which would otherwise
-// let the cap be bypassed.
+// Counts non-blocked super administrators, including accounts still in onboarding,
+// so fresh accounts cannot bypass the two-account cap.
 function count_superadmin_slots($connect, $excludeUserId = '')
 {
     $sql = "SELECT COUNT(*) FROM users WHERE role = 'superadmin' AND approval_status <> 'blocked'";
@@ -114,8 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $targetName = '';
     $targetRole = '';
     $targetStatus = '';
+    $targetEmail = '';
     if ($targetUserId !== '') {
-        $targetRoleStmt = mysqli_prepare($connect, "SELECT first_name, middle_name, last_name, extension_name, role, approval_status FROM users WHERE user_id = ? LIMIT 1");
+        $targetRoleStmt = mysqli_prepare($connect, "SELECT first_name, middle_name, last_name, extension_name, role, approval_status, email FROM users WHERE user_id = ? LIMIT 1");
         if ($targetRoleStmt) {
             mysqli_stmt_bind_param($targetRoleStmt, 's', $targetUserId);
             mysqli_stmt_execute($targetRoleStmt);
@@ -124,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $targetIsSuperAdmin = ($targetRoleRow['role'] ?? '') === 'superadmin';
             $targetRole = (string)($targetRoleRow['role'] ?? 'user');
             $targetStatus = (string)($targetRoleRow['approval_status'] ?? 'pending');
+            $targetEmail = trim((string)($targetRoleRow['email'] ?? ''));
             $targetName = trim(($targetRoleRow['first_name'] ?? '') . ' ' . ($targetRoleRow['middle_name'] ?? '') . ' ' . ($targetRoleRow['last_name'] ?? '') . ' ' . ($targetRoleRow['extension_name'] ?? ''));
             mysqli_stmt_close($targetRoleStmt);
         }
@@ -179,7 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($resetStmt);
                 $accountMessage = $resetOk ? 'User password reset successfully.' : 'Unable to reset the user password.';
                 if ($resetOk) {
-                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'superadmin', 'Account Management', 'Reset password for ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : ''));
+                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'superadmin', 'Account Management', 'Reset password for ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : ''), $targetUserId);
                 }
             } else {
                 $accountMessage = 'Unable to prepare the password reset request.';
@@ -217,7 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $approved = mysqli_stmt_execute($stmt);
                 mysqli_stmt_close($stmt);
                 if ($approved) {
-                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Approved account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : ''));
+                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Approved account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : ''), $targetUserId);
                 }
             }
         }
@@ -231,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $blocked = mysqli_stmt_execute($stmt);
                 mysqli_stmt_close($stmt);
                 if ($blocked) {
-                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Blocked account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : ''));
+                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Blocked account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : ''), $targetUserId);
                 }
             }
         }
@@ -273,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $resolutionNote = $demoteSuperadmin
                         ? ' and demoted to administrator'
                         : ($targetRole === 'superadmin' ? ' and retained the super administrator role' : '');
-                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Unblocked account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : '') . $resolutionNote);
+                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Unblocked account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : '') . $resolutionNote, $targetUserId);
                 }
             }
         }
@@ -290,11 +295,113 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lastName = trim($_POST['last_name'] ?? '');
         $username = trim($_POST['username'] ?? '');
         $email = trim($_POST['email'] ?? '');
+        $isSelfEdit = $targetUserId === $currentUserId;
+        $profileErrors = [];
+
+        // Personal and address details are only editable on the signed-in
+        // account, so editing somebody else never blanks out those columns.
+        $middleName = '';
+        $extensionName = '';
+        $dateOfBirth = '';
+        $age = 0;
+        $sex = '';
+        $street = '';
+        $barangay = '';
+        $city = '';
+        $province = '';
+        $country = '';
+        $zipCode = '';
+
+        if ($firstName === '') {
+            $profileErrors[] = 'First name is required.';
+        } elseif (mb_strlen($firstName) > 50) {
+            $profileErrors[] = 'First name must be 50 characters or fewer.';
+        }
+        if ($lastName === '') {
+            $profileErrors[] = 'Last name is required.';
+        } elseif (mb_strlen($lastName) > 50) {
+            $profileErrors[] = 'Last name must be 50 characters or fewer.';
+        }
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $profileErrors[] = 'Enter a valid email address.';
+        } elseif (mb_strlen($email) > 100) {
+            $profileErrors[] = 'Email must be 100 characters or fewer.';
+        }
+        if ($username === '') {
+            $profileErrors[] = 'Username is required.';
+        } elseif (mb_strlen($username) > 30 || preg_match('/\s/', $username)) {
+            $profileErrors[] = 'Username must be 30 characters or fewer and cannot contain spaces.';
+        }
+
+        if ($isSelfEdit) {
+            $middleName = trim((string)($_POST['middle_name'] ?? ''));
+            $extensionName = trim((string)($_POST['extension_name'] ?? ''));
+            $dateOfBirthRaw = trim((string)($_POST['date_of_birth'] ?? ''));
+            $sex = trim((string)($_POST['sex'] ?? ''));
+            $street = trim((string)($_POST['street'] ?? ''));
+            $barangay = trim((string)($_POST['barangay'] ?? ''));
+            $city = trim((string)($_POST['city_municipality'] ?? ''));
+            $province = trim((string)($_POST['province'] ?? ''));
+            $country = trim((string)($_POST['country'] ?? ''));
+            $zipCode = trim((string)($_POST['zip_code'] ?? ''));
+
+            if ($middleName !== '' && mb_strlen($middleName) > 50) {
+                $profileErrors[] = 'Middle name must be 50 characters or fewer.';
+            }
+            if ($extensionName !== '' && mb_strlen($extensionName) > 10) {
+                $profileErrors[] = 'Extension must be 10 characters or fewer.';
+            }
+
+            $birthDate = DateTime::createFromFormat('!Y-m-d', $dateOfBirthRaw);
+            if ($dateOfBirthRaw === '' || !$birthDate || $birthDate->format('Y-m-d') !== $dateOfBirthRaw) {
+                $profileErrors[] = 'Enter a valid date of birth.';
+            } elseif ($birthDate->getTimestamp() > time()) {
+                $profileErrors[] = 'Date of birth cannot be in the future.';
+            } else {
+                $dateOfBirth = $dateOfBirthRaw;
+                $age = (int)(new DateTime('today'))->diff($birthDate)->y;
+            }
+
+            if (!in_array($sex, ['', 'Male', 'Female'], true)) {
+                $profileErrors[] = 'Choose Male or Female for sex.';
+            }
+
+            $addressChecks = [
+                ['street', $street, 100, 'Street'],
+                ['barangay', $barangay, 50, 'Barangay'],
+                ['city_municipality', $city, 50, 'City / Municipality'],
+                ['province', $province, 50, 'Province'],
+                ['country', $country, 50, 'Country'],
+                ['zip_code', $zipCode, 10, 'ZIP Code']
+            ];
+            foreach ($addressChecks as $addressCheck) {
+                if ($addressCheck[1] === '') {
+                    $profileErrors[] = $addressCheck[3] . ' is required.';
+                } elseif (mb_strlen($addressCheck[1]) > $addressCheck[2]) {
+                    $profileErrors[] = $addressCheck[3] . ' must be ' . $addressCheck[2] . ' characters or fewer.';
+                }
+            }
+            if ($zipCode !== '' && !preg_match('/^[0-9A-Za-z \-]{1,10}$/', $zipCode)) {
+                $profileErrors[] = 'ZIP code may only contain letters, numbers, spaces, and dashes.';
+            }
+        }
+
         if (!preg_match('/^\d{4}-\d{4}$/', $targetUserId)) {
             $accountMessage = 'User ID must contain numbers in the format xxxx-xxxx.';
+        } elseif ($profileErrors) {
+            $accountMessage = implode(' ', $profileErrors);
         } else {
             $allowedUpdateRoles = $isSuperAdmin ? ['user', 'admin', 'superadmin'] : ['user', 'admin'];
-            $role = in_array($_POST['role'] ?? 'user', $allowedUpdateRoles, true) ? $_POST['role'] : 'user';
+            // The role select is disabled while editing your own account, so the
+            // browser omits it from the POST. Keep the stored role in that case:
+            // falling back to 'user' made every self-save fail with
+            // "You cannot change your own role."
+            if (array_key_exists('role', $_POST)) {
+                $postedRole = is_string($_POST['role']) ? $_POST['role'] : '';
+                $role = in_array($postedRole, $allowedUpdateRoles, true) ? $postedRole : 'user';
+            } else {
+                $role = $targetRole;
+            }
             if ($targetUserId === $currentUserId && $role !== $targetRole) {
                 $accountMessage = 'You cannot change your own role.';
             } elseif ($targetUserId === $currentUserId && ($_POST['approval_status'] ?? '') !== $targetStatus) {
@@ -306,20 +413,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($role === 'superadmin' && $targetRole !== 'superadmin' && count_superadmin_slots($connect, $targetUserId) >= 2) {
                 $accountMessage = 'Two super administrators are already active. Block one before promoting this account.';
             } else {
-                $status = in_array($_POST['approval_status'] ?? 'pending', ['pending','active','blocked']) ? $_POST['approval_status'] : 'pending';
+                $postedStatus = is_string($_POST['approval_status'] ?? null) ? $_POST['approval_status'] : '';
+                // The account list renders other super administrators as
+                // "Inactive" while one is on duty; that display-only label must
+                // not be written back as a real status change.
+                if (in_array($postedStatus, ['pending', 'active', 'blocked'], true)) {
+                    $status = $postedStatus;
+                } else {
+                    $status = in_array($targetStatus, ['pending', 'active', 'blocked'], true) ? $targetStatus : 'pending';
+                }
                 $privileges = $normalizePrivileges($_POST['privileges'] ?? ['read_users']);
                 if (!$isSuperAdmin) {
                     $privileges = implode(',', array_diff(explode(',', $privileges), ['delete_accounts']));
                 }
 
-                $stmt = mysqli_prepare($connect, "UPDATE users SET first_name = ?, last_name = ?, username = ?, email = ?, role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?");
-                if ($stmt) {
-                    mysqli_stmt_bind_param($stmt, 'sssssssss', $firstName, $lastName, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
-                    $updated = mysqli_stmt_execute($stmt);
-                    mysqli_stmt_close($stmt);
-                    if ($updated) {
-                        $updatedName = trim($firstName . ' ' . $lastName);
-                        activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Edited account ' . $targetUserId . ($updatedName !== '' ? ' (' . $updatedName . ')' : '') . ' [' . $role . ']');
+                // username and email are UNIQUE, so check before writing.
+                $duplicateId = null;
+                $duplicateStmt = mysqli_prepare($connect, "SELECT user_id FROM users WHERE (username = ? OR email = ?) AND user_id <> ? LIMIT 1");
+                if ($duplicateStmt) {
+                    mysqli_stmt_bind_param($duplicateStmt, 'sss', $username, $email, $targetUserId);
+                    mysqli_stmt_execute($duplicateStmt);
+                    $duplicateResult = mysqli_stmt_get_result($duplicateStmt);
+                    $duplicateRow = $duplicateResult ? mysqli_fetch_assoc($duplicateResult) : null;
+                    $duplicateId = $duplicateRow['user_id'] ?? null;
+                    mysqli_stmt_close($duplicateStmt);
+                }
+
+                if ($duplicateId) {
+                    $accountMessage = 'The username or email is already in use.';
+                } else {
+                    if ($isSelfEdit) {
+                        $stmt = mysqli_prepare($connect, "UPDATE users SET first_name = ?, middle_name = ?, last_name = ?, extension_name = ?, date_of_birth = ?, age = ?, sex = ?, street = ?, barangay = ?, city_municipality = ?, province = ?, country = ?, zip_code = ?, username = ?, email = ?, role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?");
+                        if ($stmt) {
+                            $selfTypes = str_repeat('s', 20);
+                            mysqli_stmt_bind_param($stmt, $selfTypes, $firstName, $middleName, $lastName, $extensionName, $dateOfBirth, $age, $sex, $street, $barangay, $city, $province, $country, $zipCode, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
+                        }
+                    } else {
+                        $stmt = mysqli_prepare($connect, "UPDATE users SET first_name = ?, last_name = ?, username = ?, email = ?, role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?");
+                        if ($stmt) {
+                            mysqli_stmt_bind_param($stmt, 'sssssssss', $firstName, $lastName, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
+                        }
+                    }
+
+                    if ($stmt) {
+                        $updated = mysqli_stmt_execute($stmt);
+                        mysqli_stmt_close($stmt);
+                        if ($updated) {
+                            $updatedName = trim($firstName . ' ' . $lastName);
+                            $accountIdentity = $targetUserId . ($updatedName !== '' ? ' (' . $updatedName . ')' : '');
+                            $logDetails = ($targetRole !== 'superadmin' && $role === 'superadmin')
+                                ? 'Promoted account ' . $accountIdentity . ' from ' . $targetRole . ' to super administrator'
+                                : 'Edited account ' . $accountIdentity . ' [' . $role . ']';
+                            activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', $logDetails, $targetUserId);
+                            $accountMessage = 'Account updated successfully.';
+                        } else {
+                            $accountMessage = 'Unable to save the account changes. The username or email may already be in use.';
+                        }
+                    } else {
+                        $accountMessage = 'Unable to prepare the account update request.';
                     }
                 }
             }
@@ -347,17 +498,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($role === 'superadmin' && count_superadmin_slots($connect) >= 2) {
             $accountMessage = 'Two super administrators are already active. Block one before creating another.';
         } else {
-            $duplicateStmt = mysqli_prepare($connect, "SELECT user_id FROM users WHERE username = ? OR email = ? LIMIT 1");
+            $duplicateRows = [];
+            $duplicateCheckFailed = false;
+            $duplicateStmt = mysqli_prepare($connect, "SELECT username, email FROM users WHERE username = ? OR email = ?");
             if ($duplicateStmt) {
                 mysqli_stmt_bind_param($duplicateStmt, 'ss', $username, $email);
-                mysqli_stmt_execute($duplicateStmt);
-                $duplicateResult = mysqli_stmt_get_result($duplicateStmt);
-                $duplicate = $duplicateResult ? mysqli_fetch_assoc($duplicateResult) : null;
+                if (!mysqli_stmt_execute($duplicateStmt)) {
+                    $duplicateCheckFailed = true;
+                    error_log('Account duplicate check failed: ' . mysqli_stmt_error($duplicateStmt));
+                } else {
+                    $duplicateResult = mysqli_stmt_get_result($duplicateStmt);
+                    if (!$duplicateResult) {
+                        $duplicateCheckFailed = true;
+                        error_log('Account duplicate check result failed: ' . mysqli_stmt_error($duplicateStmt));
+                    } else {
+                        while ($duplicateRow = mysqli_fetch_assoc($duplicateResult)) {
+                            $duplicateRows[] = $duplicateRow;
+                        }
+                    }
+                }
                 mysqli_stmt_close($duplicateStmt);
+            } else {
+                $duplicateCheckFailed = true;
+                error_log('Account duplicate check prepare failed: ' . mysqli_error($connect));
             }
 
-            if (!empty($duplicate)) {
-                $accountMessage = 'The username or email is already in use.';
+            if ($duplicateCheckFailed) {
+                $accountMessage = 'Unable to check whether the username or email is already in use. Please try again.';
+            } elseif (!empty($duplicateRows)) {
+                $usernameTaken = false;
+                $emailTaken = false;
+                foreach ($duplicateRows as $duplicateRow) {
+                    if (strcasecmp((string)($duplicateRow['username'] ?? ''), $username) === 0) {
+                        $usernameTaken = true;
+                    }
+                    if (strcasecmp((string)($duplicateRow['email'] ?? ''), $email) === 0) {
+                        $emailTaken = true;
+                    }
+                }
+                if ($usernameTaken && $emailTaken) {
+                    $accountMessage = '';
+                } elseif ($usernameTaken) {
+                    $accountMessage = '';
+                } else {
+                    $accountMessage = '';
+                }
             } else {
                 $userId = next_privileged_user_id($connect);
                 $passwordHash = password_hash($password, PASSWORD_DEFAULT);
@@ -406,7 +591,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             mysqli_stmt_close($verifyStmt);
                         }
                         $accountMessage = $verifiedRole === $role
-                            ? 'Account created successfully. User ID: ' . $userId . ($credentialsSent ? ' Login credentials were sent to the email address.' : ' The account was created, but the credentials email could not be sent.')
+                            ? 'Account is Created. User ID: ' . $userId . ($credentialsSent ? ' The mail server accepted the credentials email; ask the recipient to check Inbox, Spam, or All Mail.' : ' The account was created, but SMTP failed. Check the PHP error log for the SMTP error.')
                             : 'The account was created, but its role was not saved correctly.';
                     } else {
                         $accountMessage = 'Unable to create the account.';
@@ -419,30 +604,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($action === 'delete_account') {
-        if ($targetUserId !== '' && $targetUserId !== $currentUserId) {
-            if ($isSuperAdmin) {
-                $stmt = mysqli_prepare($connect, "DELETE FROM users WHERE user_id = ?");
-                if ($stmt) {
-                    mysqli_stmt_bind_param($stmt, 's', $targetUserId);
-                    $deleted = mysqli_stmt_execute($stmt) && mysqli_stmt_affected_rows($stmt) === 1;
-                    mysqli_stmt_close($stmt);
-                    if ($deleted) {
-                        activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'superadmin', 'Account Management', 'Deleted account ' . $targetUserId . ($targetName !== '' ? ' (' . $targetName . ')' : '') . ($targetRole !== '' ? ' [' . $targetRole . ']' : ''));
-                    }
-                }
+    if ($action === 'delete_account' && $isSuperAdmin) {
+        $reason = trim((string)($_POST['reason'] ?? ''));
+        if ($targetUserId === '' || $targetUserId === $currentUserId) {
+            $accountMessage = 'Choose another account to delete.';
+        } elseif ($reason === '' || strlen($reason) > 1000) {
+            $accountMessage = 'Enter a deletion reason of 1 to 1000 characters.';
+        } elseif (!filter_var($targetEmail, FILTER_VALIDATE_EMAIL)) {
+            $accountMessage = 'This account has no valid email address, so a deletion notice cannot be sent.';
+        } elseif (!mysqli_begin_transaction($connect)) {
+            $accountMessage = 'Unable to start the account deletion. Please try again.';
+        } else {
+            $stmt = mysqli_prepare($connect, "DELETE FROM users WHERE user_id = ? AND user_id <> ?");
+            $deleted = false;
+            if ($stmt) {
+                mysqli_stmt_bind_param($stmt, 'ss', $targetUserId, $currentUserId);
+                $deleted = mysqli_stmt_execute($stmt) && mysqli_stmt_affected_rows($stmt) === 1;
+                mysqli_stmt_close($stmt);
+            }
+
+            if (!$deleted) {
+                mysqli_rollback($connect);
+                $accountMessage = 'The account could not be deleted.';
+            } elseif (!send_account_deletion_notice($targetEmail, $targetName, $targetUserId, $reason)) {
+                mysqli_rollback($connect);
+                $accountMessage = 'The account was not deleted because its notice email could not be sent. Check SMTP settings and try again.';
+            } elseif (mysqli_commit($connect)) {
+                $accountMessage = 'Account deleted and notice email sent.';
+                $accountIdentity = $targetName !== '' ? $targetName : $targetUserId;
+                $activityReason = function_exists('mb_substr') ? mb_substr($reason, 0, 170, 'UTF-8') : (preg_match('/^.{0,170}/us', $reason, $reasonParts) ? $reasonParts[0] : '');
+                activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'superadmin', 'Account Management', 'Deleted account ' . $targetUserId . '. Reason: ' . $activityReason, $targetUserId);
+            } else {
+                mysqli_rollback($connect);
+                $accountMessage = 'The deletion could not be finalized. Please check the account and try again.';
             }
         }
     }
 
     if ($action === 'request_delete' && !$isSuperAdmin && $canManage) {
-        $reason = trim($_POST['reason'] ?? '');
-        if (!$targetIsSuperAdmin && $targetUserId !== '' && $reason !== '') {
+        $reason = trim((string)($_POST['reason'] ?? ''));
+        if ($targetUserId === '' || $targetIsSuperAdmin) {
+            $accountMessage = 'Choose a valid user account to request for deletion.';
+        } elseif ($reason === '' || strlen($reason) > 1000) {
+            $accountMessage = 'Enter a deletion reason of 1 to 1000 characters.';
+        } elseif (!filter_var($targetEmail, FILTER_VALIDATE_EMAIL)) {
+            $accountMessage = 'This account has no valid email address, so a deletion notice cannot be sent if the request is approved.';
+        } else {
             $stmt = mysqli_prepare($connect, "INSERT INTO account_delete_requests (target_user_id, requested_by, reason) VALUES (?, ?, ?)");
             if ($stmt) {
                 mysqli_stmt_bind_param($stmt, 'sss', $targetUserId, $currentUserId, $reason);
-                mysqli_stmt_execute($stmt);
+                $requested = mysqli_stmt_execute($stmt);
                 mysqli_stmt_close($stmt);
+                if ($requested) {
+                    $accountMessage = 'Deletion request submitted. The user will be emailed this reason if it is approved.';
+                    $accountIdentity = $targetName !== '' ? $targetName : $targetUserId;
+                    $activityReason = function_exists('mb_substr') ? mb_substr($reason, 0, 170, 'UTF-8') : (preg_match('/^.{0,170}/us', $reason, $reasonParts) ? $reasonParts[0] : '');
+                    activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', 'Requested deletion of account ' . $targetUserId . '. Reason: ' . $activityReason, $targetUserId);
+                } else {
+                    $accountMessage = 'Unable to submit the deletion request.';
+                }
+            } else {
+                $accountMessage = 'Unable to prepare the deletion request.';
             }
         }
     }
@@ -450,27 +672,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'approve_delete_request' && $isSuperAdmin) {
         $requestId = (int)($_POST['request_id'] ?? 0);
         if ($requestId > 0) {
-            $stmt = mysqli_prepare($connect, "SELECT target_user_id FROM account_delete_requests WHERE id = ? AND status = 'pending' LIMIT 1");
+            $stmt = mysqli_prepare($connect, "SELECT dr.target_user_id, dr.reason, u.email, u.first_name, u.middle_name, u.last_name, u.extension_name, u.role FROM account_delete_requests dr INNER JOIN users u ON u.user_id = dr.target_user_id WHERE dr.id = ? AND dr.status = 'pending' LIMIT 1");
             if ($stmt) {
                 mysqli_stmt_bind_param($stmt, 'i', $requestId);
                 mysqli_stmt_execute($stmt);
                 $result = mysqli_stmt_get_result($stmt);
                 $request = $result ? mysqli_fetch_assoc($result) : null;
                 mysqli_stmt_close($stmt);
-                if ($request) {
-                    $deleteStmt = mysqli_prepare($connect, "DELETE FROM users WHERE user_id = ? AND user_id <> ?");
-                    if ($deleteStmt) {
-                        mysqli_stmt_bind_param($deleteStmt, 'ss', $request['target_user_id'], $currentUserId);
-                        mysqli_stmt_execute($deleteStmt);
-                        mysqli_stmt_close($deleteStmt);
-                    }
-                    $reviewStmt = mysqli_prepare($connect, "UPDATE account_delete_requests SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ?");
-                    if ($reviewStmt) {
-                        mysqli_stmt_bind_param($reviewStmt, 'si', $currentUserId, $requestId);
-                        mysqli_stmt_execute($reviewStmt);
-                        mysqli_stmt_close($reviewStmt);
+
+                if (!$request) {
+                    $accountMessage = 'This deletion request is no longer available.';
+                } else {
+                    $reason = trim((string)($request['reason'] ?? ''));
+                    $requestTargetId = (string)$request['target_user_id'];
+                    $requestTargetName = trim(($request['first_name'] ?? '') . ' ' . ($request['middle_name'] ?? '') . ' ' . ($request['last_name'] ?? '') . ' ' . ($request['extension_name'] ?? ''));
+                    $requestTargetEmail = trim((string)($request['email'] ?? ''));
+
+                    if ($requestTargetId === $currentUserId) {
+                        $accountMessage = 'You cannot delete your own account.';
+                    } elseif ($reason === '' || strlen($reason) > 1000) {
+                        $accountMessage = 'This request has no valid deletion reason, so it cannot be approved.';
+                    } elseif (!filter_var($requestTargetEmail, FILTER_VALIDATE_EMAIL)) {
+                        $accountMessage = 'The user has no valid email address, so the deletion notice cannot be sent.';
+                    } elseif (!mysqli_begin_transaction($connect)) {
+                        $accountMessage = 'Unable to start the account deletion. Please try again.';
+                    } else {
+                        $reviewStmt = mysqli_prepare($connect, "UPDATE account_delete_requests SET status = 'approved', reviewed_by = ?, reviewed_at = NOW() WHERE id = ? AND status = 'pending'");
+                        $reviewed = false;
+                        if ($reviewStmt) {
+                            mysqli_stmt_bind_param($reviewStmt, 'si', $currentUserId, $requestId);
+                            $reviewed = mysqli_stmt_execute($reviewStmt) && mysqli_stmt_affected_rows($reviewStmt) === 1;
+                            mysqli_stmt_close($reviewStmt);
+                        }
+
+                        $deleteStmt = $reviewed ? mysqli_prepare($connect, "DELETE FROM users WHERE user_id = ? AND user_id <> ?") : false;
+                        $deleted = false;
+                        if ($deleteStmt) {
+                            mysqli_stmt_bind_param($deleteStmt, 'ss', $requestTargetId, $currentUserId);
+                            $deleted = mysqli_stmt_execute($deleteStmt) && mysqli_stmt_affected_rows($deleteStmt) === 1;
+                            mysqli_stmt_close($deleteStmt);
+                        }
+
+                        if (!$reviewed || !$deleted) {
+                            mysqli_rollback($connect);
+                            $accountMessage = 'The deletion request could not be approved.';
+                        } elseif (!send_account_deletion_notice($requestTargetEmail, $requestTargetName, $requestTargetId, $reason)) {
+                            mysqli_rollback($connect);
+                            $accountMessage = 'The request was not approved because the user notice could not be sent. Check SMTP settings and try again.';
+                        } elseif (mysqli_commit($connect)) {
+                            $accountMessage = 'Deletion approved and notice email sent.';
+                            $accountIdentity = $requestTargetName !== '' ? $requestTargetName : $requestTargetId;
+                            $activityReason = function_exists('mb_substr') ? mb_substr($reason, 0, 170, 'UTF-8') : (preg_match('/^.{0,170}/us', $reason, $reasonParts) ? $reasonParts[0] : '');
+                            activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'superadmin', 'Account Management', 'Approved deletion of account ' . $requestTargetId . '. Reason: ' . $activityReason, $requestTargetId);
+                        } else {
+                            mysqli_rollback($connect);
+                            $accountMessage = 'The deletion could not be finalized. Please check the request and try again.';
+                        }
                     }
                 }
+            } else {
+                $accountMessage = 'Unable to prepare the deletion request review.';
             }
         }
     }
@@ -488,6 +749,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isSuperAdmin && ($_POST['action'] ?? '') === 'create_privileged_account') {
+    $_SESSION['create_account_result'] = $accountMessage;
+    $redirectUrl = $_SERVER['PHP_SELF'] ?? 'admin.php';
+    if (!empty($_GET)) {
+        $redirectUrl .= '?' . http_build_query($_GET);
+    }
+    header('Location: ' . $redirectUrl);
+    exit();
+}
 $filterUserId = trim($_GET['user_id'] ?? '');
 $filterName = trim($_GET['name'] ?? '');
 $filterRole = trim($_GET['role'] ?? '');
@@ -579,15 +850,116 @@ if ($isSuperAdmin) {
 }
 $pendingDeleteRequests = count($deleteRequests);
 $activityLogs = [];
+$activityTotal = 0;
+$activityPage = 1;
+$activityPerPage = 10;
+$activityTotalPages = 1;
+$activityOffset = 0;
+$activityShowingFrom = 0;
+$activityShowingTo = 0;
+$activityWindowStart = 1;
+$activityWindowEnd = 1;
+$activitySearch = '';
+$activityAction = '';
+$activityFrom = '';
+$activityTo = '';
+$activityHasFilters = false;
+$activityActionOptions = [
+    'edit' => 'Edit accounts',
+    'promote' => 'Promote accounts',
+    'delete' => 'Delete accounts',
+    'block' => 'Block accounts',
+    'unblock' => 'Unblock accounts',
+    'login' => 'Login',
+    'logout' => 'Logout'
+];
+$activityActionPatterns = [
+    'edit' => 'Edited account%',
+    'promote' => 'Promoted account%',
+    'delete' => 'Deleted account%',
+    'block' => 'Blocked account%',
+    'unblock' => 'Unblocked account%',
+    'login' => 'Successful login%',
+    'logout' => 'Logged out%'
+];
+$activityUrl = function (array $overrides = []) {
+    $params = array_merge($_GET, ['view' => 'activity-logs'], $overrides);
+    $params = array_filter($params, function ($value) { return $value !== '' && $value !== null; });
+    return '?' . http_build_query($params);
+};
+$activityLike = function ($value) use ($connect) {
+    $escaped = mysqli_real_escape_string($connect, (string)$value);
+    return '%' . str_replace(['%', '_'], ['\%', '\_'], $escaped) . '%';
+};
+
 if (in_array($_SESSION['auth_role'] ?? 'user', ['admin', 'superadmin'], true) && $isActivityLogsView) {
-    $activityVisibility = $isSuperAdmin ? '' : " WHERE role <> 'superadmin'";
-    $activityResult = mysqli_query($connect, "SELECT user_id, name, role, section, browser_os, time_in, time_out, CASE WHEN ip_address IN ('::1', '0:0:0:0:0:0:0:1') THEN '127.0.0.1' ELSE ip_address END AS ip_address, details FROM activity_logs" . $activityVisibility . " ORDER BY time_in DESC LIMIT 250");
+    $activitySearch = trim((string)($_GET['q'] ?? ''));
+    $requestedAction = (string)($_GET['log_action'] ?? '');
+    $activityAction = isset($activityActionPatterns[$requestedAction]) ? $requestedAction : '';
+
+    $fromRaw = trim((string)($_GET['from'] ?? ''));
+    $fromParsed = DateTime::createFromFormat('!Y-m-d', $fromRaw);
+    $activityFrom = ($fromParsed && $fromParsed->format('Y-m-d') === $fromRaw) ? $fromRaw : '';
+    $toRaw = trim((string)($_GET['to'] ?? ''));
+    $toParsed = DateTime::createFromFormat('!Y-m-d', $toRaw);
+    $activityTo = ($toParsed && $toParsed->format('Y-m-d') === $toRaw) ? $toRaw : '';
+    if ($activityFrom !== '' && $activityTo !== '' && $activityFrom > $activityTo) {
+        $swap = $activityFrom;
+        $activityFrom = $activityTo;
+        $activityTo = $swap;
+    }
+
+    $activityHasFilters = $activitySearch !== '' || $activityAction !== '' || $activityFrom !== '' || $activityTo !== '';
+    $activityPage = max(1, (int)($_GET['page'] ?? 1));
+
+    $where = [];
+    if (!$isSuperAdmin) {
+        $where[] = "l.role <> 'superadmin'";
+    }
+    if ($activitySearch !== '') {
+        $like = $activityLike($activitySearch);
+        $where[] = "(l.user_id LIKE '$like' OR l.name LIKE '$like'"
+            . " OR (SELECT username FROM users WHERE user_id = l.user_id LIMIT 1) LIKE '$like'"
+            . " OR l.details LIKE '$like')";
+    }
+    if ($activityAction !== '') {
+        $where[] = "l.details LIKE '" . $activityActionPatterns[$activityAction] . "'";
+    }
+    if ($activityFrom !== '') {
+        $where[] = "l.time_in >= '" . $activityFrom . " 00:00:00'";
+    }
+    if ($activityTo !== '') {
+        $where[] = "l.time_in <= '" . $activityTo . " 23:59:59'";
+    }
+    $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+    $countResult = mysqli_query($connect, 'SELECT COUNT(*) FROM activity_logs l' . $whereSql);
+    $activityTotal = $countResult ? (int)mysqli_fetch_row($countResult)[0] : 0;
+    $activityTotalPages = max(1, (int)ceil($activityTotal / $activityPerPage));
+    if ($activityPage > $activityTotalPages) {
+        $activityPage = $activityTotalPages;
+    }
+    $activityOffset = ($activityPage - 1) * $activityPerPage;
+
+    $activityResult = mysqli_query(
+        $connect,
+        'SELECT l.user_id, l.name, l.role, l.section, l.browser_os, l.time_in, l.time_out,'
+            . " CASE WHEN l.ip_address IN ('::1', '0:0:0:0:0:0:0:1') THEN '127.0.0.1' ELSE l.ip_address END AS ip_address, l.details"
+            . ' FROM activity_logs l' . $whereSql
+            . ' ORDER BY l.time_in DESC, l.id DESC'
+            . ' LIMIT ' . (int)$activityPerPage . ' OFFSET ' . (int)$activityOffset
+    );
     if ($activityResult) {
         while ($activity = mysqli_fetch_assoc($activityResult)) {
             $activityLogs[] = $activity;
         }
         mysqli_free_result($activityResult);
     }
+
+    $activityShowingFrom = $activityTotal > 0 ? $activityOffset + 1 : 0;
+    $activityShowingTo = $activityOffset + count($activityLogs);
+    $activityWindowStart = max(1, $activityPage - 2);
+    $activityWindowEnd = min($activityTotalPages, $activityPage + 2);
 }
 $superadminSlotsFull = count_superadmin_slots($connect) >= 2;
 $nextPrivilegedUserId = next_privileged_user_id($connect);
@@ -599,7 +971,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $isSuperAdmin ? 'Super Admin Panel' : 'Admin Panel'; ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../css/admin.css?v=1.4">
+        <link rel="stylesheet" href="../css/admin.css?v=1.9">
 </head>
 <body class="<?php echo $isSuperAdmin ? 'super-admin-page' : 'admin-page'; ?>">
     <div class="admin-wrap">
@@ -789,7 +1161,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                                     <form method="POST">
                                         <input type="hidden" name="action" value="request_delete">
                                         <input type="hidden" name="user_id" value="<?php echo htmlspecialchars($user['user_id'] ?? ''); ?>">
-                                        <input type="text" name="reason" placeholder="Reason for deletion" required>
+                                        <textarea name="reason" placeholder="Reason for deletion" maxlength="1000" rows="2" required></textarea>
                                         <button type="submit" class="danger">Request Delete</button>
                                     </form>
                                     <?php endif; ?>
@@ -802,6 +1174,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             </table>
             </div>
         </section>
+        <?php endif; ?>
 
         <?php if ($isSuperAdmin && !$isActivityLogsView && ($isDeleteRequestsView || count($deleteRequests) > 0)): ?>
         <section class="panel" id="delete-requests">
@@ -809,7 +1182,11 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                 <h2>Delete Requests</h2>
             </div>
             <?php if (count($deleteRequests) === 0): ?>
-                <p class="empty-state">There are no pending delete requests.</p>
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fa-solid fa-inbox"></i></div>
+                    <h3>No delete requests</h3>
+                    <p>When someone asks to have an account deleted, the request will appear here for review.</p>
+                </div>
             <?php else: ?>
             <div class="table-wrap">
                 <table>
@@ -843,15 +1220,49 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             <?php endif; ?>
         </section>
         <?php endif; ?>
-        <?php endif; ?>
 
         <?php if (in_array($_SESSION['auth_role'] ?? 'user', ['admin', 'superadmin'], true) && $isActivityLogsView): ?>
         <section class="panel" id="activity-logs">
             <div class="panel-header">
                 <h2>Activity Logs</h2>
             </div>
+            <form method="GET" class="filter-form log-filter-form">
+                <input type="hidden" name="view" value="activity-logs">
+                <div class="form-group">
+                    <label for="log-search">Search</label>
+                    <input type="text" id="log-search" name="q" value="<?php echo htmlspecialchars($activitySearch); ?>" placeholder="Name, ID, username or details">
+                </div>
+                <div class="form-group">
+                    <label for="log-action">Action</label>
+                    <select id="log-action" name="log_action">
+                        <option value="">All actions</option>
+                        <?php foreach ($activityActionOptions as $actionValue => $actionLabel): ?>
+                        <option value="<?php echo $actionValue; ?>"<?php echo $activityAction === $actionValue ? ' selected' : ''; ?>><?php echo $actionLabel; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="log-from">From</label>
+                    <input type="date" id="log-from" name="from" value="<?php echo htmlspecialchars($activityFrom); ?>">
+                </div>
+                <div class="form-group">
+                    <label for="log-to">To</label>
+                    <input type="date" id="log-to" name="to" value="<?php echo htmlspecialchars($activityTo); ?>">
+                </div>
+                <div class="form-group log-filter-actions">
+                    <button type="submit"><i class="fa-solid fa-filter" aria-hidden="true"></i> Filter</button>
+                    <a href="?view=activity-logs"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reset</a>
+                </div>
+            </form>
             <?php if (count($activityLogs) === 0): ?>
-                <p class="empty-state">There are no activity logs yet.</p>
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                    <h3><?php echo $activityHasFilters ? 'No matching activity' : 'No activity logs yet'; ?></h3>
+                    <p><?php echo $activityHasFilters ? 'Try adjusting your search, action or date range.' : 'Sign-ins and account changes will show up here.'; ?></p>
+                    <?php if ($activityHasFilters): ?>
+                    <p><a href="?view=activity-logs">Clear all filters</a></p>
+                    <?php endif; ?>
+                </div>
             <?php else: ?>
             <div class="table-wrap">
                 <table>
@@ -885,6 +1296,35 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     </tbody>
                 </table>
             </div>
+            <div class="log-pagination">
+                <span class="log-pagination-summary">Showing <?php echo $activityShowingFrom; ?>&ndash;<?php echo $activityShowingTo; ?> of <?php echo $activityTotal; ?> entries</span>
+                <?php if ($activityTotalPages > 1): ?>
+                <nav class="log-pagination-controls" aria-label="Activity log pages">
+                    <span class="log-page-status">Page <?php echo $activityPage; ?> of <?php echo $activityTotalPages; ?></span>
+                    <?php if ($activityPage > 1): ?>
+                    <a href="<?php echo htmlspecialchars($activityUrl(['page' => $activityPage - 1])); ?>" rel="prev">&laquo; Prev</a>
+                    <?php endif; ?>
+                    <?php if ($activityWindowStart > 1): ?>
+                    <a href="<?php echo htmlspecialchars($activityUrl(['page' => 1])); ?>">1</a>
+                    <?php if ($activityWindowStart > 2): ?><span class="log-page-gap">&hellip;</span><?php endif; ?>
+                    <?php endif; ?>
+                    <?php for ($pageNumber = $activityWindowStart; $pageNumber <= $activityWindowEnd; $pageNumber++): ?>
+                    <?php if ($pageNumber === $activityPage): ?>
+                    <span class="log-page current" aria-current="page"><?php echo $pageNumber; ?></span>
+                    <?php else: ?>
+                    <a href="<?php echo htmlspecialchars($activityUrl(['page' => $pageNumber])); ?>"><?php echo $pageNumber; ?></a>
+                    <?php endif; ?>
+                    <?php endfor; ?>
+                    <?php if ($activityWindowEnd < $activityTotalPages): ?>
+                    <?php if ($activityWindowEnd < $activityTotalPages - 1): ?><span class="log-page-gap">&hellip;</span><?php endif; ?>
+                    <a href="<?php echo htmlspecialchars($activityUrl(['page' => $activityTotalPages])); ?>"><?php echo $activityTotalPages; ?></a>
+                    <?php endif; ?>
+                    <?php if ($activityPage < $activityTotalPages): ?>
+                    <a href="<?php echo htmlspecialchars($activityUrl(['page' => $activityPage + 1])); ?>" rel="next">Next &raquo;</a>
+                    <?php endif; ?>
+                </nav>
+                <?php endif; ?>
+            </div>
             <?php endif; ?>
         </section>
         <?php endif; ?>
@@ -892,7 +1332,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
         </div>
 
         <?php if ($isSuperAdmin): ?>
-        <div class="modal-backdrop" id="create-account" aria-hidden="true">
+        <div class="modal-backdrop<?php echo $showCreateAccountResult ? ' is-open' : ''; ?>" id="create-account" aria-hidden="<?php echo $showCreateAccountResult ? 'false' : 'true'; ?>">
           <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-account-title">
             <button type="button" class="modal-close close-create-modal" aria-label="Close add administrator dialog">&times;</button>
             <div class="panel-header">
@@ -941,50 +1381,121 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             <div class="panel-header">
                 <h2 id="edit-account-title">Edit Account</h2>
             </div>
-            <form method="POST" class="update-form">
+            <form method="POST" class="update-form" id="edit-account-form">
                 <input type="hidden" name="action" value="update_account">
-                <div class="form-group">
-                    <label for="update-user-id">User ID</label>
-                    <input id="update-user-id" type="text" name="user_id" readonly required>
-                </div>
-                <div class="form-group">
-                    <label for="update-first-name">First Name</label>
-                    <input id="update-first-name" type="text" name="first_name" placeholder="First Name">
-                </div>
-                <div class="form-group">
-                    <label for="update-last-name">Last Name</label>
-                    <input id="update-last-name" type="text" name="last_name" placeholder="Last Name">
-                </div>
-                <div class="form-group">
-                    <label for="update-username">Username</label>
-                    <input id="update-username" type="text" name="username" placeholder="Username">
-                </div>
-                <div class="form-group">
-                    <label for="update-email">Email</label>
-                    <input id="update-email" type="email" name="email" placeholder="Email">
-                </div>
-                <div class="form-group">
-                    <select id="update-role" name="role">
-                        <option value="user">User</option>
-                        <option value="admin">Administrator</option>
-                        <?php if ($isSuperAdmin): ?><option value="superadmin"<?php echo $superadminSlotsFull ? ' disabled' : ''; ?>>Super Administrator</option><?php endif; ?>
-                    </select>
-                    <?php if ($isSuperAdmin): ?>
-                    <p class="role-cap-note" id="update-role-cap-note"<?php echo $superadminSlotsFull ? '' : ' hidden'; ?>>Two super administrators are already active. Block one to enable this option.</p>
-                    <?php endif; ?>
-                </div>
-                <input type="hidden" id="update-status" name="approval_status" value="">
-                <div class="form-group privilege-box">
-                    <label>Privileges</label>
-                    <div class="checkbox-grid">
-                        <label><input type="checkbox" name="privileges[]" value="read_users"> Read Users</label>
-                        <label><input type="checkbox" name="privileges[]" value="manage_users"> Manage Users</label>
-                        <label><input type="checkbox" name="privileges[]" value="approve_users"> Approve Users</label>
-                        <label><input type="checkbox" name="privileges[]" value="update_accounts"> Update Accounts</label>
-                        <?php if ($isSuperAdmin): ?><label><input type="checkbox" name="privileges[]" value="delete_accounts"> Delete Accounts</label><?php endif; ?>
+
+                <div class="edit-form-section" id="edit-personal-section">
+                    <p class="edit-section-title">Personal Information</p>
+                    <div class="form-group">
+                        <label for="update-user-id">User ID</label>
+                        <input id="update-user-id" type="text" name="user_id" readonly required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-first-name">First Name</label>
+                        <input id="update-first-name" type="text" name="first_name" placeholder="First Name" maxlength="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-last-name">Last Name</label>
+                        <input id="update-last-name" type="text" name="last_name" placeholder="Last Name" maxlength="50" required>
+                    </div>
+                    <div class="edit-personal-extra" id="edit-personal-extra" hidden>
+                        <div class="form-group">
+                            <label for="update-middle-name">Middle Name</label>
+                            <input id="update-middle-name" type="text" name="middle_name" placeholder="Middle Name" maxlength="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-extension-name">Extension</label>
+                            <input id="update-extension-name" type="text" name="extension_name" placeholder="Jr., Sr., III" maxlength="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-date-of-birth">Date of Birth</label>
+                            <input id="update-date-of-birth" type="date" name="date_of_birth" max="<?php echo date('Y-m-d'); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-age">Age</label>
+                            <input id="update-age" type="number" name="age" min="0" max="150" readonly aria-readonly="true" placeholder="Auto-computed">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-sex">Sex</label>
+                            <select id="update-sex" name="sex">
+                                <option value="">Not provided</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-                <button type="submit">Save Changes</button>
+
+                <div class="edit-form-section" id="edit-address-section" hidden>
+                    <p class="edit-section-title">Address Information</p>
+                    <div class="form-group">
+                        <label for="update-street">Street</label>
+                        <input id="update-street" type="text" name="street" placeholder="Street / Purok" maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-barangay">Barangay</label>
+                        <input id="update-barangay" type="text" name="barangay" placeholder="Barangay" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-city">City / Municipality</label>
+                        <input id="update-city" type="text" name="city_municipality" placeholder="City / Municipality" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-province">Province</label>
+                        <input id="update-province" type="text" name="province" placeholder="Province" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-country">Country</label>
+                        <input id="update-country" type="text" name="country" placeholder="Country" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-zip-code">ZIP Code</label>
+                        <input id="update-zip-code" type="text" name="zip_code" placeholder="ZIP Code" maxlength="10">
+                    </div>
+                </div>
+
+                <div class="edit-form-section" id="edit-account-section">
+                    <p class="edit-section-title">Account Information</p>
+                    <div class="form-group">
+                        <label for="update-username">Username</label>
+                        <input id="update-username" type="text" name="username" placeholder="Username" maxlength="30" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-email">Email</label>
+                        <input id="update-email" type="email" name="email" placeholder="Email" maxlength="100" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-role">Role</label>
+                        <select id="update-role" name="role">
+                            <option value="user">User</option>
+                            <option value="admin">Administrator</option>
+                            <?php if ($isSuperAdmin): ?><option value="superadmin"<?php echo $superadminSlotsFull ? ' disabled' : ''; ?>>Super Administrator</option><?php endif; ?>
+                        </select>
+                        <?php if ($isSuperAdmin): ?>
+                        <p class="role-cap-note" id="update-role-cap-note"<?php echo $superadminSlotsFull ? '' : ' hidden'; ?>>Two super administrators are already active. Block one to enable this option.</p>
+                        <?php endif; ?>
+                    </div>
+                    <input type="hidden" id="update-status" name="approval_status" value="">
+                    <div class="form-group privilege-box">
+                        <label>Privileges</label>
+                        <div class="checkbox-grid">
+                            <label><input type="checkbox" name="privileges[]" value="read_users"> Read Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="manage_users"> Manage Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="approve_users"> Approve Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="update_accounts"> Update Accounts</label>
+                            <?php if ($isSuperAdmin): ?><label><input type="checkbox" name="privileges[]" value="delete_accounts"> Delete Accounts</label><?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="edit-form-actions">
+                    <p class="edit-step-indicator" id="edit-step-indicator">Step 1 of 2 &mdash; Personal Information</p>
+                    <div class="edit-step-buttons">
+                        <button type="button" class="edit-secondary-btn" id="edit-back-btn" hidden>Back</button>
+                        <button type="button" class="edit-secondary-btn" id="edit-next-btn">Next</button>
+                        <button type="submit" id="edit-save-btn" hidden>Save Changes</button>
+                    </div>
+                </div>
             </form>
         </section>
                 </div>
@@ -1062,6 +1573,11 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                                     <label for="confirm-action-password">Confirm new user password</label>
                                     <input type="password" name="confirm_password" id="confirm-action-password" autocomplete="new-password">
                                 </div>
+                                <div id="delete-reason-fields" hidden>
+                                    <label for="delete-action-reason">Reason for account deletion</label>
+                                    <textarea name="reason" id="delete-action-reason" rows="4" maxlength="1000" placeholder="Explain why this account is being deleted" aria-describedby="delete-reason-help"></textarea>
+                                    <small id="delete-reason-help">This explanation will be included in the email sent to the user.</small>
+                                </div>
                                 <div class="modal-actions">
                                     <button type="button" class="modal-secondary back-action-password">Back</button>
                                     <button type="submit" id="account-action-submit">Confirm</button>
@@ -1128,6 +1644,85 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     document.getElementById('user-details-modal').setAttribute('aria-hidden', 'false');
                 });
             });
+            function syncAgeFromDateOfBirth() {
+                var dobField = document.getElementById('update-date-of-birth');
+                var ageField = document.getElementById('update-age');
+                if (!dobField || !ageField) return;
+                var parts = dobField.value ? dobField.value.split('-') : [];
+                if (parts.length !== 3) { ageField.value = ''; return; }
+                var birth = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                if (isNaN(birth.getTime())) { ageField.value = ''; return; }
+                var today = new Date();
+                var age = today.getFullYear() - birth.getFullYear();
+                var monthDiff = today.getMonth() - birth.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+                ageField.value = age >= 0 ? String(age) : '';
+            }
+            document.getElementById('update-date-of-birth').addEventListener('change', syncAgeFromDateOfBirth);
+
+            var editStep = 1;
+            var editIsOwnAccount = false;
+            var editAddressFieldIds = ['update-street', 'update-barangay', 'update-city', 'update-province', 'update-country', 'update-zip-code'];
+
+            function setEditAddressRequired(isOwn) {
+                editAddressFieldIds.concat(['update-date-of-birth']).forEach(function (id) {
+                    var field = document.getElementById(id);
+                    if (field) field.required = isOwn;
+                });
+            }
+
+            function renderEditStep() {
+                var personalSection = document.getElementById('edit-personal-section');
+                var addressSection = document.getElementById('edit-address-section');
+                var accountSection = document.getElementById('edit-account-section');
+                var personalExtra = document.getElementById('edit-personal-extra');
+                if (personalExtra) personalExtra.hidden = !editIsOwnAccount;
+                if (personalSection) personalSection.hidden = false;
+                if (addressSection) addressSection.hidden = !(editIsOwnAccount && editStep === 1);
+                if (accountSection) accountSection.hidden = editStep !== 2;
+                document.getElementById('edit-back-btn').hidden = editStep !== 2;
+                document.getElementById('edit-next-btn').hidden = editStep === 2;
+                document.getElementById('edit-save-btn').hidden = editStep !== 2;
+                document.getElementById('edit-step-indicator').innerHTML = editStep === 1
+                    ? 'Step 1 of 2 &mdash; Personal Information'
+                    : 'Step 2 of 2 &mdash; Account Information';
+            }
+
+            function setEditStep(step) {
+                editStep = step === 2 ? 2 : 1;
+                renderEditStep();
+            }
+
+            document.getElementById('edit-next-btn').addEventListener('click', function () {
+                var stepOneFields = document.querySelectorAll('#edit-personal-section input, #edit-personal-section select, #edit-address-section input, #edit-address-section select');
+                var firstInvalid = null;
+                stepOneFields.forEach(function (field) {
+                    if (!firstInvalid && field.checkValidity && !field.checkValidity()) firstInvalid = field;
+                });
+                if (firstInvalid) {
+                    firstInvalid.reportValidity();
+                    return;
+                }
+                setEditStep(2);
+            });
+
+            document.getElementById('edit-back-btn').addEventListener('click', function () {
+                setEditStep(1);
+            });
+
+            document.getElementById('edit-account-form').addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' || editStep !== 1) return;
+                if (event.target && (event.target.tagName === 'TEXTAREA' || event.target.type === 'submit')) return;
+                event.preventDefault();
+                document.getElementById('edit-next-btn').click();
+            });
+
+            document.getElementById('edit-account-form').addEventListener('invalid', function (event) {
+                if (editStep === 2 && event.target && event.target.closest && !event.target.closest('#edit-account-section')) {
+                    setEditStep(1);
+                }
+            }, true);
+
             document.querySelectorAll('.edit-user-button').forEach(function (button) {
                 button.addEventListener('click', function () {
                     var profileButton = button.closest('.action-menu').querySelector('.view-user-button');
@@ -1139,9 +1734,25 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     setValue('update-first-name', 'data-first-name');
                     setValue('update-last-name', 'data-last-name');
                     setValue('update-username', 'data-username');
+                    document.getElementById('update-username').setAttribute('data-original-username', profileButton.getAttribute('data-username') || '');
                     setValue('update-email', 'data-email');
+                    setValue('update-middle-name', 'data-middle-name');
+                    setValue('update-extension-name', 'data-extension-name');
+                    setValue('update-date-of-birth', 'data-date-of-birth');
+                    setValue('update-sex', 'data-sex');
+                    setValue('update-street', 'data-street');
+                    setValue('update-barangay', 'data-barangay');
+                    setValue('update-city', 'data-city');
+                    setValue('update-province', 'data-province');
+                    setValue('update-country', 'data-country');
+                    setValue('update-zip-code', 'data-zip-code');
                     var targetRole = profileButton.getAttribute('data-role') || 'user';
                     var targetId = profileButton.getAttribute('data-user-id') || '';
+                    var isOwnAccount = targetId === currentUserId;
+                    editIsOwnAccount = isOwnAccount;
+                    setEditAddressRequired(isOwnAccount);
+                    setEditStep(1);
+                    syncAgeFromDateOfBirth();
                     var roleSelect = document.getElementById('update-role');
                     var userOption = roleSelect.querySelector('option[value="user"]');
                     roleSelect.disabled = false;
@@ -1212,6 +1823,12 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     document.getElementById('new-password-fields').hidden = !isPasswordReset;
                     document.getElementById('new-action-password').required = isPasswordReset;
                     document.getElementById('confirm-action-password').required = isPasswordReset;
+                    var isDeleteAction = action === 'delete_account';
+                    var deleteReasonFields = document.getElementById('delete-reason-fields');
+                    var deleteReason = document.getElementById('delete-action-reason');
+                    deleteReasonFields.hidden = !isDeleteAction;
+                    deleteReason.required = isDeleteAction;
+                    deleteReason.value = '';
                     var roleChoice = document.getElementById('unblock-role-choice');
                     var showRoleChoice = action === 'unblock_account' && trigger.getAttribute('data-target-role') === 'superadmin';
                     if (roleChoice) {
@@ -1244,7 +1861,9 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                 document.getElementById('account-action-title').textContent = action === 'reset_password' ? 'Reset User Password' : label.charAt(0).toUpperCase() + label.slice(1) + ' Account';
                 document.getElementById('account-action-message').textContent = action === 'reset_password'
                     ? 'Choose a new password for this user.'
-                    : 'Confirm this ' + label + ' action.';
+                    : action === 'delete_account'
+                        ? 'The reason below will be emailed to the account owner.'
+                        : 'Confirm this ' + label + ' action.';
                 document.getElementById('action-password-step').hidden = true;
                 document.getElementById('action-confirm-step').hidden = false;
             }
@@ -1273,6 +1892,6 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             });
         </script>
     <script src="../javascript/register.js"></script>
-    <script src="../javascript/admin_update.js?v=3.0"></script>
+    <script src="../javascript/admin_update.js?v=3.1"></script>
 </body>
 </html>

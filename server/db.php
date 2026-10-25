@@ -52,6 +52,7 @@ mysqli_query($connect, "CREATE TABLE IF NOT EXISTS activity_logs (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     session_key CHAR(32) NOT NULL UNIQUE,
     user_id VARCHAR(9) NOT NULL,
+    target_user_id VARCHAR(9) NULL,
     name VARCHAR(160) NOT NULL,
     role VARCHAR(30) NOT NULL,
     section VARCHAR(80) NOT NULL,
@@ -61,8 +62,20 @@ mysqli_query($connect, "CREATE TABLE IF NOT EXISTS activity_logs (
     ip_address VARCHAR(45) NOT NULL,
     details VARCHAR(255) NOT NULL,
     INDEX idx_activity_user (user_id),
+    INDEX idx_activity_target_role_time (target_user_id, role, time_in),
     INDEX idx_activity_time (time_in)
 )");
+
+$activityTargetColumnResult = mysqli_query($connect, "SHOW COLUMNS FROM activity_logs LIKE 'target_user_id'");
+if ($activityTargetColumnResult) {
+    if (mysqli_num_rows($activityTargetColumnResult) === 0) {
+        $activityTargetMigration = "ALTER TABLE activity_logs ADD COLUMN target_user_id VARCHAR(9) NULL AFTER user_id, ADD INDEX idx_activity_target_role_time (target_user_id, role, time_in)";
+        if (!mysqli_query($connect, $activityTargetMigration)) {
+            error_log('Activity log target-user migration failed: ' . mysqli_error($connect));
+        }
+    }
+    mysqli_free_result($activityTargetColumnResult);
+}
 
 // This singleton row coordinates the currently on-duty super administrator.
 // A database lock is used so the rule also works across separate browsers/devices.

@@ -138,7 +138,7 @@ function onboarding_profile_value($user, $key) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Administrator Setup</title><link rel="stylesheet" href="../css/admin.css?v=1.0"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Administrator Setup</title><link rel="stylesheet" href="../css/admin.css?v=1.2"></head>
 <body>
 <div class="onboarding-shell">
   <section class="onboarding-card">

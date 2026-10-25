@@ -103,6 +103,13 @@ document.addEventListener('DOMContentLoaded', function() {
             clearErrorMessage(field.id);
             return true;
         }
+        // An unchanged username is already stored data: never block a save just
+        // because an older account does not match the current format rule.
+        var original = field.getAttribute('data-original-username');
+        if (original !== null && value === original) {
+            clearErrorMessage(field.id);
+            return true;
+        }
         if (!/^[a-z]{5,10}_[0-9]{1,6}$/.test(value)) {
             showErrorMessage(field.id, 'Username format must be ex. xxxxx_12345');
             return false;

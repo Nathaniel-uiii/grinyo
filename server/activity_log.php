@@ -56,16 +56,19 @@ function activity_log_start($connect, $userId, $name, $role, $section, $details)
     return $ok ? $sessionKey : '';
 }
 
-function activity_log_event($connect, $userId, $name, $role, $section, $details)
+function activity_log_event($connect, $userId, $name, $role, $section, $details, $targetUserId = null)
 {
     $sessionKey = bin2hex(random_bytes(16));
     $browserOs = activity_log_browser_os();
     $ipAddress = activity_log_ip_address();
-    $stmt = mysqli_prepare($connect, "INSERT INTO activity_logs (session_key, user_id, name, role, section, browser_os, time_in, time_out, ip_address, details) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)");
+    $targetUserId = $targetUserId !== null && trim((string)$targetUserId) !== ''
+        ? trim((string)$targetUserId)
+        : null;
+    $stmt = mysqli_prepare($connect, "INSERT INTO activity_logs (session_key, user_id, target_user_id, name, role, section, browser_os, time_in, time_out, ip_address, details) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)");
     if (!$stmt) {
         return false;
     }
-    mysqli_stmt_bind_param($stmt, 'ssssssss', $sessionKey, $userId, $name, $role, $section, $browserOs, $ipAddress, $details);
+    mysqli_stmt_bind_param($stmt, 'sssssssss', $sessionKey, $userId, $targetUserId, $name, $role, $section, $browserOs, $ipAddress, $details);
     $ok = mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
     return $ok;

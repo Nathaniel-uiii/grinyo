@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin Panel</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+        <link rel="stylesheet" href="../css/admin.css?v=1.9">
+</head>
+<body class="super-admin-page">
+    <div class="admin-wrap">
+        <div class="page-header">
+            <div class="user-chip-wrap">
+                <div class="user-chip">Welcome, bladimer_1</div>
+            </div>
+        </div>
+        
+        <div class="dashboard-layout">
+            <aside class="sidebar" aria-label="Admin navigation">
+                <div class="sidebar-brand">
+                    <span class="brand-mark">UD</span>
+                    <div>
+                        <strong>Ube Delights</strong>
+                        <span>Super Admin</span>
+                    </div>
+                </div>
+                <nav class="sidebar-nav">
+                    <a class="sidebar-link active" href="?status=all#dashboard">Dashboard</a>
+                    <a class="sidebar-link " href="?status=pending#accounts">Pending Accounts</a>
+                    <a class="sidebar-link " href="?status=blocked#accounts">Blocked Accounts</a>
+                    <a class="sidebar-link " href="?view=my-account#my-account">My Account</a>
+                    <a class="sidebar-link active" href="?status=all#accounts">Account Management</a>
+                    <a class="sidebar-link " href="?view=delete-requests#delete-requests">Delete Requests</a>                    <a class="sidebar-link " href="?view=activity-logs#activity-logs">Activity Logs</a>
+                </nav>
+                <form method="POST" action="../server/logout.php" class="sidebar-logout-form">
+                    <button type="submit" class="sidebar-logout">Log Out</button>
+                </form>
+            </aside>
+
+            <main class="dashboard-content">
+                <section id="dashboard" class="summary-grid" aria-label="Account summary">
+            <div class="summary-card pending-card">
+                <span class="summary-label">Pending Accounts</span>
+                <strong>0</strong>
+            </div>
+            <div class="summary-card blocked-card">
+                <span class="summary-label">Blocked Accounts</span>
+                <strong>0</strong>
+            </div>
+            <div class="summary-card total-card">
+                <span class="summary-label">Total Users</span>
+                <strong>1</strong>
+            </div>
+        </section>
+        
+        
+                <section class="panel" id="accounts">
+            <div class="panel-header">
+                <h2>Account Management</h2>
+                                    <button type="button" class="primary-action add-admin-action open-create-modal" aria-label="Add administrator">+</button>
+                            </div>
+            <form method="GET" class="filter-form">
+                <div class="form-group">
+                    <input type="text" name="user_id" value="" placeholder="Search User ID">
+                </div>
+                <div class="form-group">
+                    <input type="text" name="name" value="" placeholder="Search Name">
+                </div>
+                <div class="form-group">
+                    <select name="role" aria-label="Filter by role">
+                        <option value="">All Roles</option>
+                        <option value="user" >User</option>
+                        <option value="admin" >Administrator</option>
+                        <option value="superadmin" >Super Administrator</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <select name="status" aria-label="Filter by status">
+                        <option value="">All Statuses</option>
+                        <option value="pending" >Pending</option>
+                        <option value="active" >Active</option>
+                        <option value="blocked" >Blocked</option>
+                    </select>
+                </div>
+                <button type="submit">Filter</button>
+            </form>
+        </section>
+
+        <section class="panel" id="account-list">
+            <div class="panel-header">
+                <h2>Account Management</h2>
+            </div>
+            <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Name</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                                            <tr>
+                            <td>2026-0010</td>
+                            <td>Bladimer Palco</td>
+                            <td>bladimer_1</td>
+                            <td>bladimer.palco@csucc.edu.ph</td>
+                            <td>superadmin</td>
+                                                        <td class="status active">Active</td>
+                            <td class="action-cell">
+                                <div class="action-menu">
+                                    <button type="button" class="action-menu-toggle" aria-label="Open actions for bladimer_1" aria-haspopup="menu" aria-expanded="false">
+                                        <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                                    </button>
+                                    <div class="row-actions" role="menu">
+                                    <button type="button" class="icon-button view-user-button" title="View user details" aria-label="View details for bladimer_1"
+                                        data-user-id="2026-0010"
+                                        data-name="Bladimer  Palco"
+                                        data-first-name="Bladimer"
+                                        data-middle-name=""
+                                        data-last-name="Palco"
+                                        data-extension-name=""
+                                        data-date-of-birth="1990-05-17"
+                                        data-age="36"
+                                        data-sex="Female"
+                                        data-username="bladimer_1"
+                                        data-email="bladimer.palco@csucc.edu.ph"
+                                        data-street="Purok 1"
+                                        data-barangay="Barangay 8"
+                                        data-city="Cabadbaran"
+                                        data-province="Agusan"
+                                        data-country="Philippines"
+                                        data-zip-code="8605"
+                                        data-role="superadmin"
+                                        data-privileges="read_users,manage_users,approve_users,update_accounts,delete_accounts"
+                                        data-status="Active"
+                                        data-created-at="2026-09-21 18:30:49">
+                                        <span>View Profile</span><i class="fa-solid fa-eye" aria-hidden="true"></i>
+                                    </button>
+                                                                            <button type="button" class="edit-user-button"><i class="fa-solid fa-pen" aria-hidden="true"></i> Edit</button>
+                                                                                                                                                    <button type="button" class="action-modal-trigger" data-action="block_account" data-user-id="2026-0010" data-action-label="block" disabled>Block</button>
+                                                                                                                <button type="button" class="action-modal-trigger danger" data-action="delete_account" data-user-id="2026-0010" data-action-label="delete" disabled>Delete</button>
+                                        <button type="button" class="action-modal-trigger" data-action="reset_password" data-user-id="2026-0010" data-action-label="reset password" disabled><i class="fa-solid fa-key" aria-hidden="true"></i> Reset Password</button>
+                                                                        </div>
+                                </div>
+                            </td>
+                        </tr>
+                                    </tbody>
+            </table>
+            </div>
+        </section>
+        
+        
+                    </main>
+        </div>
+
+                <div class="modal-backdrop" id="create-account" aria-hidden="true">
+          <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-account-title">
+            <button type="button" class="modal-close close-create-modal" aria-label="Close add administrator dialog">&times;</button>
+            <div class="panel-header">
+                <h2 id="create-account-title">Create Account</h2>
+            </div>
+                        <form method="POST" class="create-form">
+                <input type="hidden" name="action" value="create_privileged_account">
+                <div class="form-group">
+                    <label for="create-username">Username</label>
+                    <input id="create-username" type="text" name="username" placeholder="xxxxx_12345" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="create-email">Email Address</label>
+                    <input id="create-email" type="email" name="email" placeholder="admin@example.com" autocomplete="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="create-user-id">User ID (Auto-generated)</label>
+                    <input id="create-user-id" type="text" value="2026-0012" readonly aria-readonly="true">
+                </div>
+                <div class="form-group">
+                    <label for="create-password">Password</label>
+                    <input id="create-password" type="password" name="password" minlength="8" autocomplete="new-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="create-role">Role</label>
+                    <select id="create-role" name="role" required>
+                        <option value="user">User</option>
+                        <option value="admin">Administrator</option>
+                        <option value="superadmin">Super Administrator</option>
+                    </select>
+                                    </div>
+                <button type="submit">Create Account</button>
+            </form>
+                    </section>
+                </div>
+        
+                <div class="modal-backdrop" id="edit-account-modal" aria-hidden="true">
+        <section class="modal-panel edit-account-modal" role="dialog" aria-modal="true" aria-labelledby="edit-account-title">
+            <button type="button" class="modal-close close-edit-modal" aria-label="Close edit account dialog">&times;</button>
+            <div class="panel-header">
+                <h2 id="edit-account-title">Edit Account</h2>
+            </div>
+            <form method="POST" class="update-form" id="edit-account-form">
+                <input type="hidden" name="action" value="update_account">
+
+                <div class="edit-form-section" id="edit-personal-section">
+                    <p class="edit-section-title">Personal Information</p>
+                    <div class="form-group">
+                        <label for="update-user-id">User ID</label>
+                        <input id="update-user-id" type="text" name="user_id" readonly required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-first-name">First Name</label>
+                        <input id="update-first-name" type="text" name="first_name" placeholder="First Name" maxlength="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-last-name">Last Name</label>
+                        <input id="update-last-name" type="text" name="last_name" placeholder="Last Name" maxlength="50" required>
+                    </div>
+                    <div class="edit-personal-extra" id="edit-personal-extra" hidden>
+                        <div class="form-group">
+                            <label for="update-middle-name">Middle Name</label>
+                            <input id="update-middle-name" type="text" name="middle_name" placeholder="Middle Name" maxlength="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-extension-name">Extension</label>
+                            <input id="update-extension-name" type="text" name="extension_name" placeholder="Jr., Sr., III" maxlength="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-date-of-birth">Date of Birth</label>
+                            <input id="update-date-of-birth" type="date" name="date_of_birth" max="2026-10-19">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-age">Age</label>
+                            <input id="update-age" type="number" name="age" min="0" max="150" readonly aria-readonly="true" placeholder="Auto-computed">
+                        </div>
+                        <div class="form-group">
+                            <label for="update-sex">Sex</label>
+                            <select id="update-sex" name="sex">
+                                <option value="">Not provided</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="edit-form-section" id="edit-address-section" hidden>
+                    <p class="edit-section-title">Address Information</p>
+                    <div class="form-group">
+                        <label for="update-street">Street</label>
+                        <input id="update-street" type="text" name="street" placeholder="Street / Purok" maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-barangay">Barangay</label>
+                        <input id="update-barangay" type="text" name="barangay" placeholder="Barangay" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-city">City / Municipality</label>
+                        <input id="update-city" type="text" name="city_municipality" placeholder="City / Municipality" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-province">Province</label>
+                        <input id="update-province" type="text" name="province" placeholder="Province" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-country">Country</label>
+                        <input id="update-country" type="text" name="country" placeholder="Country" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="update-zip-code">ZIP Code</label>
+                        <input id="update-zip-code" type="text" name="zip_code" placeholder="ZIP Code" maxlength="10">
+                    </div>
+                </div>
+
+                <div class="edit-form-section" id="edit-account-section">
+                    <p class="edit-section-title">Account Information</p>
+                    <div class="form-group">
+                        <label for="update-username">Username</label>
+                        <input id="update-username" type="text" name="username" placeholder="Username" maxlength="30" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-email">Email</label>
+                        <input id="update-email" type="email" name="email" placeholder="Email" maxlength="100" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="update-role">Role</label>
+                        <select id="update-role" name="role">
+                            <option value="user">User</option>
+                            <option value="admin">Administrator</option>
+                            <option value="superadmin">Super Administrator</option>                        </select>
+                                                <p class="role-cap-note" id="update-role-cap-note" hidden>Two super administrators are already active. Block one to enable this option.</p>
+                                            </div>
+                    <input type="hidden" id="update-status" name="approval_status" value="">
+                    <div class="form-group privilege-box">
+                        <label>Privileges</label>
+                        <div class="checkbox-grid">
+                            <label><input type="checkbox" name="privileges[]" value="read_users"> Read Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="manage_users"> Manage Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="approve_users"> Approve Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="update_accounts"> Update Accounts</label>
+                            <label><input type="checkbox" name="privileges[]" value="delete_accounts"> Delete Accounts</label>                        </div>
+                    </div>
+                </div>
+
+                <div class="edit-form-actions">
+                    <p class="edit-step-indicator" id="edit-step-indicator">Step 1 of 2 &mdash; Personal Information</p>
+                    <div class="edit-step-buttons">
+                        <button type="button" class="edit-secondary-btn" id="edit-back-btn" hidden>Back</button>
+                        <button type="button" class="edit-secondary-btn" id="edit-next-btn">Next</button>
+                        <button type="submit" id="edit-save-btn" hidden>Save Changes</button>
+                    </div>
+                </div>
+            </form>
+        </section>
+                </div>
+        
+                <div class="modal-backdrop" id="user-details-modal" aria-hidden="true">
+                    <section class="modal-panel details-modal" role="dialog" aria-modal="true" aria-labelledby="user-details-title">
+                        <button type="button" class="modal-close close-details-modal" aria-label="Close user details dialog">&times;</button>
+                        <h2 id="user-details-title">User Details</h2>
+                        <div class="details-grid">
+                            <div class="details-section-title">Personal Information</div>
+                            <div><span>User ID</span><strong id="detail-user-id"></strong></div>
+                            <div><span>Name</span><strong id="detail-name"></strong></div>
+                            <div><span>Date of Birth</span><strong id="detail-date-of-birth"></strong></div>
+                            <div><span>Age</span><strong id="detail-age"></strong></div>
+                            <div><span>Sex</span><strong id="detail-sex"></strong></div>
+                            <div class="details-section-title">Account Information</div>
+                            <div><span>Username</span><strong id="detail-username"></strong></div>
+                            <div><span>Email</span><strong id="detail-email"></strong></div>
+                            <div><span>Role</span><strong id="detail-role"></strong></div>
+                            <div><span>Status</span><strong id="detail-status"></strong></div>
+                            <div><span>Registered</span><strong id="detail-created-at"></strong></div>
+                            <div class="details-wide"><span>Privileges</span><strong id="detail-privileges"></strong></div>
+                            <div class="details-section-title">Address Information</div>
+                            <div><span>Street</span><strong id="detail-street"></strong></div>
+                            <div><span>Barangay</span><strong id="detail-barangay"></strong></div>
+                            <div><span>City / Municipality</span><strong id="detail-city"></strong></div>
+                            <div><span>Province</span><strong id="detail-province"></strong></div>
+                            <div><span>Country</span><strong id="detail-country"></strong></div>
+                            <div><span>ZIP Code</span><strong id="detail-zip-code"></strong></div>
+                        </div>
+                    </section>
+                </div>
+                                <div class="modal-backdrop" id="account-action-modal" aria-hidden="true">
+                    <section class="modal-panel action-modal" role="dialog" aria-modal="true" aria-labelledby="account-action-title">
+                        <button type="button" class="modal-close close-action-modal" aria-label="Close account action dialog">&times;</button>
+                        <form method="POST" id="account-action-form">
+                            <input type="hidden" name="action" id="account-action-input">
+                            <input type="hidden" name="user_id" id="account-action-user-id">
+                            <div id="action-password-step">
+                                <h2>Super Admin Verification</h2>
+                                <p>Enter your password before continuing.</p>
+                                <div class="action-password-fields">
+                                    <label for="current-action-password">Super-admin password</label>
+                                    <input type="password" name="current_password" id="current-action-password" autocomplete="current-password" required>
+                                </div>
+                                <button type="button" id="continue-action-button">Continue</button>
+                            </div>
+                            <div id="action-confirm-step" hidden>
+                                <h2 id="account-action-title">Confirm Account Action</h2>
+                                <p id="account-action-message"></p>
+                                <div id="unblock-role-choice" hidden>
+                                    <p class="unblock-choice-label">Choose the role for this account after unblocking:</p>
+                                    <div class="unblock-choice-group">
+                                        <label class="unblock-option">
+                                            <input type="radio" name="unblock_resolution" value="retain" checked>
+                                            <span class="unblock-option-body">
+                                                <strong>Retain</strong>
+                                                <span>Remains a Super Administrator with the same privileges.</span>
+                                            </span>
+                                        </label>
+                                        <label class="unblock-option">
+                                            <input type="radio" name="unblock_resolution" value="demote">
+                                            <span class="unblock-option-body">
+                                                <strong>Demote</strong>
+                                                <span>Becomes an Administrator and privileges are adjusted.</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div id="new-password-fields" hidden>
+                                    <label for="new-action-password">New user password</label>
+                                    <input type="password" name="new_password" id="new-action-password" autocomplete="new-password">
+                                    <label for="confirm-action-password">Confirm new user password</label>
+                                    <input type="password" name="confirm_password" id="confirm-action-password" autocomplete="new-password">
+                                </div>
+                                <div class="modal-actions">
+                                    <button type="button" class="modal-secondary back-action-password">Back</button>
+                                    <button type="submit" id="account-action-submit">Confirm</button>
+                                </div>
+                            </div>
+                        </form>
+                    </section>
+                </div>
+                    </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+        <script>
+            var currentUserId = '2026-0010';
+            var currentRole = 'superadmin';
+            var superadminSlotsFull = false;
+            window.addEventListener('pageshow', function (event) {
+                if (event.persisted) window.location.reload();
+            });
+            function closeActionMenus(exceptMenu) {
+                document.querySelectorAll('.action-menu').forEach(function (menu) {
+                    if (menu === exceptMenu) return;
+                    menu.classList.remove('is-open');
+                    var toggle = menu.querySelector('.action-menu-toggle');
+                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+                });
+            }
+            document.querySelectorAll('.action-menu-toggle').forEach(function (toggle) {
+                toggle.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    var menu = toggle.closest('.action-menu');
+                    var willOpen = !menu.classList.contains('is-open');
+                    closeActionMenus(menu);
+                    menu.classList.toggle('is-open', willOpen);
+                    if (willOpen) {
+                        var menuPanel = menu.querySelector('.row-actions');
+                        var toggleBounds = toggle.getBoundingClientRect();
+                        var viewportPadding = 8;
+                        var menuHeight = menuPanel.offsetHeight;
+                        var spaceBelow = window.innerHeight - toggleBounds.bottom - viewportPadding;
+                        var spaceAbove = toggleBounds.top - viewportPadding;
+                        var top = spaceBelow >= menuHeight || spaceBelow >= spaceAbove
+                            ? toggleBounds.bottom + viewportPadding
+                            : Math.max(viewportPadding, toggleBounds.top - menuHeight - viewportPadding);
+                        var left = Math.min(
+                            Math.max(viewportPadding, toggleBounds.right - menuPanel.offsetWidth),
+                            window.innerWidth - menuPanel.offsetWidth - viewportPadding
+                        );
+                        menuPanel.style.top = top + 'px';
+                        menuPanel.style.left = Math.max(viewportPadding, left) + 'px';
+                    }
+                    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                });
+            });
+            document.addEventListener('click', function (event) {
+                if (!event.target.closest('.action-menu')) closeActionMenus();
+            });
+            document.querySelectorAll('.view-user-button').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var fields = ['user-id', 'name', 'date-of-birth', 'age', 'sex', 'username', 'email', 'street', 'barangay', 'city', 'province', 'country', 'zip-code', 'role', 'status', 'created-at', 'privileges'];
+                    fields.forEach(function (field) {
+                        document.getElementById('detail-' + field).textContent = button.getAttribute('data-' + field) || 'Not provided';
+                    });
+                    document.getElementById('user-details-modal').classList.add('is-open');
+                    document.getElementById('user-details-modal').setAttribute('aria-hidden', 'false');
+                });
+            });
+            function syncAgeFromDateOfBirth() {
+                var dobField = document.getElementById('update-date-of-birth');
+                var ageField = document.getElementById('update-age');
+                if (!dobField || !ageField) return;
+                var parts = dobField.value ? dobField.value.split('-') : [];
+                if (parts.length !== 3) { ageField.value = ''; return; }
+                var birth = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                if (isNaN(birth.getTime())) { ageField.value = ''; return; }
+                var today = new Date();
+                var age = today.getFullYear() - birth.getFullYear();
+                var monthDiff = today.getMonth() - birth.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+                ageField.value = age >= 0 ? String(age) : '';
+            }
+            document.getElementById('update-date-of-birth').addEventListener('change', syncAgeFromDateOfBirth);
+
+            var editStep = 1;
+            var editIsOwnAccount = false;
+            var editAddressFieldIds = ['update-street', 'update-barangay', 'update-city', 'update-province', 'update-country', 'update-zip-code'];
+
+            function setEditAddressRequired(isOwn) {
+                editAddressFieldIds.concat(['update-date-of-birth']).forEach(function (id) {
+                    var field = document.getElementById(id);
+                    if (field) field.required = isOwn;
+                });
+            }
+
+            function renderEditStep() {
+                var personalSection = document.getElementById('edit-personal-section');
+                var addressSection = document.getElementById('edit-address-section');
+                var accountSection = document.getElementById('edit-account-section');
+                var personalExtra = document.getElementById('edit-personal-extra');
+                if (personalExtra) personalExtra.hidden = !editIsOwnAccount;
+                if (personalSection) personalSection.hidden = false;
+                if (addressSection) addressSection.hidden = !(editIsOwnAccount && editStep === 1);
+                if (accountSection) accountSection.hidden = editStep !== 2;
+                document.getElementById('edit-back-btn').hidden = editStep !== 2;
+                document.getElementById('edit-next-btn').hidden = editStep === 2;
+                document.getElementById('edit-save-btn').hidden = editStep !== 2;
+                document.getElementById('edit-step-indicator').innerHTML = editStep === 1
+                    ? 'Step 1 of 2 &mdash; Personal Information'
+                    : 'Step 2 of 2 &mdash; Account Information';
+            }
+
+            function setEditStep(step) {
+                editStep = step === 2 ? 2 : 1;
+                renderEditStep();
+            }
+
+            document.getElementById('edit-next-btn').addEventListener('click', function () {
+                var stepOneFields = document.querySelectorAll('#edit-personal-section input, #edit-personal-section select, #edit-address-section input, #edit-address-section select');
+                var firstInvalid = null;
+                stepOneFields.forEach(function (field) {
+                    if (!firstInvalid && field.checkValidity && !field.checkValidity()) firstInvalid = field;
+                });
+                if (firstInvalid) {
+                    firstInvalid.reportValidity();
+                    return;
+                }
+                setEditStep(2);
+            });
+
+            document.getElementById('edit-back-btn').addEventListener('click', function () {
+                setEditStep(1);
+            });
+
+            document.getElementById('edit-account-form').addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' || editStep !== 1) return;
+                if (event.target && (event.target.tagName === 'TEXTAREA' || event.target.type === 'submit')) return;
+                event.preventDefault();
+                document.getElementById('edit-next-btn').click();
+            });
+
+            document.getElementById('edit-account-form').addEventListener('invalid', function (event) {
+                if (editStep === 2 && event.target && event.target.closest && !event.target.closest('#edit-account-section')) {
+                    setEditStep(1);
+                }
+            }, true);
+
+            document.querySelectorAll('.edit-user-button').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var profileButton = button.closest('.action-menu').querySelector('.view-user-button');
+                    if (!profileButton) return;
+                    var setValue = function (id, attribute) {
+                        document.getElementById(id).value = profileButton.getAttribute(attribute) || '';
+                    };
+                    setValue('update-user-id', 'data-user-id');
+                    setValue('update-first-name', 'data-first-name');
+                    setValue('update-last-name', 'data-last-name');
+                    setValue('update-username', 'data-username');
+                    document.getElementById('update-username').setAttribute('data-original-username', profileButton.getAttribute('data-username') || '');
+                    setValue('update-email', 'data-email');
+                    setValue('update-middle-name', 'data-middle-name');
+                    setValue('update-extension-name', 'data-extension-name');
+                    setValue('update-date-of-birth', 'data-date-of-birth');
+                    setValue('update-sex', 'data-sex');
+                    setValue('update-street', 'data-street');
+                    setValue('update-barangay', 'data-barangay');
+                    setValue('update-city', 'data-city');
+                    setValue('update-province', 'data-province');
+                    setValue('update-country', 'data-country');
+                    setValue('update-zip-code', 'data-zip-code');
+                    var targetRole = profileButton.getAttribute('data-role') || 'user';
+                    var targetId = profileButton.getAttribute('data-user-id') || '';
+                    var isOwnAccount = targetId === currentUserId;
+                    editIsOwnAccount = isOwnAccount;
+                    setEditAddressRequired(isOwnAccount);
+                    setEditStep(1);
+                    syncAgeFromDateOfBirth();
+                    var roleSelect = document.getElementById('update-role');
+                    var userOption = roleSelect.querySelector('option[value="user"]');
+                    roleSelect.disabled = false;
+                    if (userOption) userOption.disabled = false;
+                    var superadminOption = roleSelect.querySelector('option[value="superadmin"]');
+                    var superadminOptionDisabled = superadminSlotsFull && targetRole !== 'superadmin';
+                    if (superadminOption) superadminOption.disabled = superadminOptionDisabled;
+                    var roleCapNote = document.getElementById('update-role-cap-note');
+                    if (roleCapNote) roleCapNote.hidden = !superadminOptionDisabled;
+                    if (targetId === currentUserId) {
+                        roleSelect.disabled = true;
+                    } else if (targetRole === 'superadmin' || targetRole === 'admin') {
+                        if (userOption) userOption.disabled = true;
+                        if (roleSelect.value === 'user') roleSelect.value = targetRole;
+                    }
+                    roleSelect.value = targetRole;
+                    document.getElementById('update-status').value = (profileButton.getAttribute('data-status') || 'pending').toLowerCase();
+                    var privileges = (profileButton.getAttribute('data-privileges') || '').split(',');
+                    document.querySelectorAll('#edit-account-modal input[name="privileges[]"]').forEach(function (input) {
+                        input.checked = privileges.indexOf(input.value) !== -1;
+                    });
+                    closeActionMenus();
+                    toggleModal('edit-account-modal', true);
+                });
+            });
+            function toggleModal(id, open) {
+                var modal = document.getElementById(id);
+                if (!modal) return;
+                modal.classList.toggle('is-open', open);
+                modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+            }
+            document.querySelectorAll('.open-create-modal').forEach(function (trigger) {
+                trigger.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    toggleModal('create-account', true);
+                });
+            });
+            document.querySelector('.close-create-modal')?.addEventListener('click', function () { toggleModal('create-account', false); });
+            document.querySelector('.close-details-modal')?.addEventListener('click', function () { toggleModal('user-details-modal', false); });
+            document.querySelector('.close-edit-modal')?.addEventListener('click', function () { toggleModal('edit-account-modal', false); });
+            document.querySelectorAll('.action-modal-trigger').forEach(function (trigger) {
+                trigger.addEventListener('click', function () {
+                    var action = trigger.getAttribute('data-action');
+                    var label = trigger.getAttribute('data-action-label');
+                    if (!true) {
+                        var directActionForm = document.createElement('form');
+                        directActionForm.method = 'POST';
+                        directActionForm.hidden = true;
+                        [['action', action], ['user_id', trigger.getAttribute('data-user-id')]].forEach(function (entry) {
+                            var input = document.createElement('input');
+                            input.type = 'hidden';
+                            input.name = entry[0];
+                            input.value = entry[1] || '';
+                            directActionForm.appendChild(input);
+                        });
+                        document.body.appendChild(directActionForm);
+                        directActionForm.submit();
+                        return;
+                    }
+                    document.getElementById('account-action-input').value = action;
+                    document.getElementById('account-action-user-id').value = trigger.getAttribute('data-user-id');
+                    document.getElementById('account-action-title').textContent = action === 'reset_password'
+                        ? 'Reset User Password'
+                        : label.charAt(0).toUpperCase() + label.slice(1) + ' Account';
+                    document.getElementById('account-action-message').textContent = 'Are you sure you want to ' + label + ' this account?';
+                    document.getElementById('account-action-submit').textContent = label.charAt(0).toUpperCase() + label.slice(1);
+                    var isPasswordReset = action === 'reset_password';
+                    document.getElementById('new-password-fields').hidden = !isPasswordReset;
+                    document.getElementById('new-action-password').required = isPasswordReset;
+                    document.getElementById('confirm-action-password').required = isPasswordReset;
+                    var roleChoice = document.getElementById('unblock-role-choice');
+                    var showRoleChoice = action === 'unblock_account' && trigger.getAttribute('data-target-role') === 'superadmin';
+                    if (roleChoice) {
+                        roleChoice.hidden = !showRoleChoice;
+                        if (showRoleChoice) {
+                            var retainRadio = roleChoice.querySelector('input[value="retain"]');
+                            if (retainRadio) retainRadio.checked = true;
+                        } else {
+                            roleChoice.querySelectorAll('input[name="unblock_resolution"]').forEach(function (radio) {
+                                radio.checked = radio.value === 'retain';
+                            });
+                        }
+                    }
+                    document.getElementById('current-action-password').value = '';
+                    document.getElementById('new-action-password').value = '';
+                    document.getElementById('confirm-action-password').value = '';
+                    document.getElementById('action-password-step').hidden = false;
+                    document.getElementById('action-confirm-step').hidden = true;
+                    toggleModal('account-action-modal', true);
+                });
+            });
+            function advanceActionToConfirm() {
+                var password = document.getElementById('current-action-password');
+                if (!password.value) {
+                    password.reportValidity();
+                    return;
+                }
+                var action = document.getElementById('account-action-input').value;
+                var label = document.querySelector('[data-action="' + action + '"]')?.getAttribute('data-action-label') || action.replace('_account', '').replace('_', ' ');
+                document.getElementById('account-action-title').textContent = action === 'reset_password' ? 'Reset User Password' : label.charAt(0).toUpperCase() + label.slice(1) + ' Account';
+                document.getElementById('account-action-message').textContent = action === 'reset_password'
+                    ? 'Choose a new password for this user.'
+                    : 'Confirm this ' + label + ' action.';
+                document.getElementById('action-password-step').hidden = true;
+                document.getElementById('action-confirm-step').hidden = false;
+            }
+            document.getElementById('continue-action-button')?.addEventListener('click', advanceActionToConfirm);
+            document.getElementById('account-action-form')?.addEventListener('submit', function (event) {
+                if (!document.getElementById('action-password-step').hidden) {
+                    event.preventDefault();
+                    advanceActionToConfirm();
+                }
+            });
+            document.querySelector('.back-action-password')?.addEventListener('click', function () {
+                document.getElementById('action-password-step').hidden = false;
+                document.getElementById('action-confirm-step').hidden = true;
+            });
+            document.querySelectorAll('.close-action-modal').forEach(function (button) {
+                button.addEventListener('click', function () { toggleModal('account-action-modal', false); });
+            });
+            document.querySelectorAll('.modal-backdrop').forEach(function (modal) {
+                modal.addEventListener('click', function (event) { if (event.target === modal) toggleModal(modal.id, false); });
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') {
+                    closeActionMenus();
+                    document.querySelectorAll('.modal-backdrop.is-open').forEach(function (modal) { toggleModal(modal.id, false); });
+                }
+            });
+        </script>
+    <script src="../javascript/register.js"></script>
+    <script src="../javascript/admin_update.js?v=3.1"></script>
+</body>
+</html>
+
+<div id="domtest-results" data-done="0"></div>
+<script>
+(function () {
+  var results = [];
+  var failures = 0;
+  function check(cond, label, extra) {
+    if (cond) results.push('PASS: ' + label);
+    else { failures++; results.push('FAIL: ' + label + (extra !== undefined && extra !== null ? ' :: ' + extra : '')); }
+  }
+
+  function run() {
+    var doc = document;
+    check(typeof window.showErrorMessage === 'function', 'register.js loaded (showErrorMessage defined)');
+
+    var currentUserId = window.currentUserId;
+    check(currentUserId === '2026-0010', 'currentUserId is 2026-0010', currentUserId);
+
+    var ownEdit = null;
+    var buttons = doc.querySelectorAll('.edit-user-button');
+    for (var i = 0; i < buttons.length; i++) {
+      var row = buttons[i].closest('.action-menu');
+      var view = row && row.querySelector('.view-user-button');
+      if (view && view.getAttribute('data-user-id') === currentUserId) ownEdit = buttons[i];
+    }
+    check(!!ownEdit, 'own account Edit button found');
+    if (!ownEdit) return finish();
+    ownEdit.click();
+
+    var modal = doc.getElementById('edit-account-modal');
+    check(modal.classList.contains('is-open'), 'edit modal opened');
+    check(doc.getElementById('edit-personal-extra').hidden === false, 'personal extras visible for self');
+    check(doc.getElementById('edit-address-section').hidden === false, 'address section visible on step 1');
+    check(doc.getElementById('edit-account-section').hidden === true, 'account section hidden on step 1');
+    check(doc.getElementById('edit-step-indicator').textContent.indexOf('Step 1 of 2') !== -1, 'step indicator = step 1');
+    check(doc.getElementById('update-role').disabled === true, 'role select disabled for self-edit');
+    check(doc.getElementById('update-username').getAttribute('data-original-username') === 'bladimer_1',
+      'original username recorded', doc.getElementById('update-username').getAttribute('data-original-username'));
+    check(doc.getElementById('update-street').required === true, 'address fields required for self-edit');
+    check(doc.getElementById('update-date-of-birth').required === true, 'date of birth required for self-edit');
+    check(doc.getElementById('update-first-name').value === 'Bladimer', 'first name prefilled', doc.getElementById('update-first-name').value);
+    check(doc.getElementById('update-street').value === 'Purok 1', 'street prefilled', doc.getElementById('update-street').value);
+
+    var names = [];
+    var els = doc.getElementById('edit-account-form').elements;
+    for (var j = 0; j < els.length; j++) { if (els[j].name && !els[j].disabled) names.push(els[j].name); }
+    check(names.indexOf('role') === -1, 'role omitted from submission (disabled select)', names.join(','));
+    check(names.indexOf('first_name') !== -1 && names.indexOf('username') !== -1, 'first_name + username submitted');
+
+    function trySubmit() {
+      var form = doc.getElementById('edit-account-form');
+      var ev = new Event('submit', { bubbles: true, cancelable: true });
+      form.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    }
+    function errBox() { return doc.getElementById('update-username-error'); }
+
+    var next = doc.getElementById('edit-next-btn');
+    next.click();
+    check(doc.getElementById('edit-account-section').hidden === false, 'Next reveals account section');
+    check(doc.getElementById('edit-step-indicator').textContent.indexOf('Step 2 of 2') !== -1, 'step indicator = step 2');
+    check(doc.getElementById('edit-save-btn').hidden === false, 'Save button visible on step 2');
+    check(doc.getElementById('edit-next-btn').hidden === true, 'Next hidden on step 2');
+    check(doc.getElementById('edit-back-btn').hidden === false, 'Back visible on step 2');
+
+    doc.getElementById('update-username').value = 'bladimer_1';
+    check(trySubmit() === false, 'save allowed with stored username bladimer_1');
+
+    doc.getElementById('update-username').value = 'qaedit_7f0cb2';
+    check(trySubmit() === false, 'save allowed when username unchanged (legacy format)');
+    check(!errBox(), 'no username error shown for unchanged legacy username');
+
+    doc.getElementById('update-username').value = 'Bad Name';
+    check(trySubmit() === true, 'save blocked for changed invalid username');
+    check(!!errBox(), 'username error message rendered', errBox() && errBox().textContent);
+
+    doc.getElementById('update-username').value = 'bladimer_1';
+    doc.getElementById('edit-back-btn').click();
+    check(doc.getElementById('edit-account-section').hidden === true, 'Back returns to step 1');
+    var first = doc.getElementById('update-first-name');
+    var original = first.value;
+    first.value = '';
+    next.click();
+    check(doc.getElementById('edit-account-section').hidden === true, 'Next blocked while first name empty');
+    first.value = original;
+    next.click();
+    check(doc.getElementById('edit-account-section').hidden === false, 'Next works after restoring first name');
+
+    finish();
+  }
+
+  function finish() {
+    results.push('---- ' + results.filter(function (r) { return r.indexOf('PASS:') === 0; }).length +
+      ' passed, ' + failures + ' failed ----');
+    var pre = document.getElementById('domtest-results');
+    pre.textContent = results.join('\n');
+    pre.setAttribute('data-done', '1');
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(run, 0); });
+  else setTimeout(run, 0);
+})();
+
+</script>
