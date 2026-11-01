@@ -206,19 +206,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   } catch (e) {}
 
-  // Restore previously entered credentials so the form feels "live" even
-  // after a server round-trip. Fresh visits/reloads will only keep these
-  // values until the error handler clears them when there is no error.
-  try {
-    var savedU = sessionStorage.getItem('login_username');
-    if (savedU !== null && u) {
-      u.value = savedU;
-    }
-    var savedP = sessionStorage.getItem('login_password');
-    if (savedP !== null && p) {
-      p.value = savedP;
-    }
-  } catch (e) {}
+
 
   // Clear only the generic required message while typing
   form.addEventListener('input', function(ev){
@@ -250,17 +238,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   });
 
-  // Persist credentials on input so they survive refresh and failed attempts
-  if (u) {
-    u.addEventListener('input', function(){
-      try { sessionStorage.setItem('login_username', u.value); } catch(e) {}
-    });
-  }
-  if (p) {
-    p.addEventListener('input', function(){
-      try { sessionStorage.setItem('login_password', p.value); } catch(e) {}
-    });
-  }
+
 });
 
 // One-time success alert after registration (shown on login page)
@@ -330,6 +308,12 @@ document.addEventListener('DOMContentLoaded', function(){
         lockoutTimer.textContent = 'You were signed out because the super administrator duty session changed. Please log in again.';
       }
       break;
+    case 'unavailable':
+      if (lockoutTimer) {
+        lockoutTimer.style.display = 'block';
+        lockoutTimer.textContent = 'Login is temporarily unavailable. Please try again in a moment.';
+      }
+      break;
     case 'pending':
       showPendingModal();
       break;
@@ -344,7 +328,7 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   // Account-status messages are informational and must not trigger lockout.
-  if (err === 'pending' || err === 'blocked' || err === 'superadmin_on_duty' || err === 'superadmin_session_ended') {
+  if (err === 'pending' || err === 'blocked' || err === 'superadmin_on_duty' || err === 'superadmin_session_ended' || err === 'unavailable') {
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }

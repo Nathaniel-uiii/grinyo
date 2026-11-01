@@ -20,9 +20,22 @@ if ($isSuperAdmin && !superadmin_duty_refresh($connect, (string)$_SESSION['auth_
 }
 
 $currentUserId = (string)$_SESSION['auth_user_id'];
-$currentPrivileges = array_filter(array_map('trim', explode(',', (string)($_SESSION['auth_privileges'] ?? ''))));
-$isAdmin = ($_SESSION['auth_role'] ?? 'user') === 'admin';
-$canApprove = $isSuperAdmin || $isAdmin || in_array('approve_users', $currentPrivileges, true);
+$currentPrivileges = [];
+$currentPrivilegeString = '';
+$currentPrivilegeStmt = mysqli_prepare($connect, "SELECT privileges FROM users WHERE user_id = ? LIMIT 1");
+if ($currentPrivilegeStmt) {
+    mysqli_stmt_bind_param($currentPrivilegeStmt, 's', $currentUserId);
+    mysqli_stmt_execute($currentPrivilegeStmt);
+    $currentPrivilegeResult = mysqli_stmt_get_result($currentPrivilegeStmt);
+    $currentPrivilegeRow = $currentPrivilegeResult ? mysqli_fetch_assoc($currentPrivilegeResult) : null;
+    if ($currentPrivilegeRow) {
+        $currentPrivilegeString = (string)($currentPrivilegeRow['privileges'] ?? '');
+    }
+    mysqli_stmt_close($currentPrivilegeStmt);
+}
+$_SESSION['auth_privileges'] = $currentPrivilegeString;
+$currentPrivileges = array_filter(array_map('trim', explode(',', $currentPrivilegeString)));
+$canApprove = $isSuperAdmin || in_array('approve_users', $currentPrivileges, true);
 $canUpdate = $isSuperAdmin || in_array('update_accounts', $currentPrivileges, true);
 $canManage = $isSuperAdmin || in_array('manage_users', $currentPrivileges, true);
 $showCreateAccountResult = false;
@@ -118,8 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $targetRole = '';
     $targetStatus = '';
     $targetEmail = '';
+    $targetPrivileges = '';
     if ($targetUserId !== '') {
-        $targetRoleStmt = mysqli_prepare($connect, "SELECT first_name, middle_name, last_name, extension_name, role, approval_status, email FROM users WHERE user_id = ? LIMIT 1");
+        $targetRoleStmt = mysqli_prepare($connect, "SELECT first_name, middle_name, last_name, extension_name, role, approval_status, email, privileges FROM users WHERE user_id = ? LIMIT 1");
         if ($targetRoleStmt) {
             mysqli_stmt_bind_param($targetRoleStmt, 's', $targetUserId);
             mysqli_stmt_execute($targetRoleStmt);
@@ -129,6 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $targetRole = (string)($targetRoleRow['role'] ?? 'user');
             $targetStatus = (string)($targetRoleRow['approval_status'] ?? 'pending');
             $targetEmail = trim((string)($targetRoleRow['email'] ?? ''));
+            $targetPrivileges = (string)($targetRoleRow['privileges'] ?? '');
             $targetName = trim(($targetRoleRow['first_name'] ?? '') . ' ' . ($targetRoleRow['middle_name'] ?? '') . ' ' . ($targetRoleRow['last_name'] ?? '') . ' ' . ($targetRoleRow['extension_name'] ?? ''));
             mysqli_stmt_close($targetRoleStmt);
         }
@@ -229,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'block_account') {
-        if ($canApprove && $targetUserId !== '' && $targetUserId !== $currentUserId) {
+        if ($canApprove && ($isSuperAdmin || $targetRole === 'user') && $targetUserId !== '' && $targetUserId !== $currentUserId) {
             $stmt = mysqli_prepare($connect, "UPDATE users SET approval_status = 'blocked', updated_by = ? WHERE user_id = ?");
             if ($stmt) {
                 mysqli_stmt_bind_param($stmt, 'ss', $currentUserId, $targetUserId);
@@ -243,7 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'unblock_account') {
-        if ($canApprove && $targetUserId !== '' && $targetUserId !== $currentUserId) {
+        if ($canApprove && ($isSuperAdmin || $targetRole === 'user') && $targetUserId !== '' && $targetUserId !== $currentUserId) {
             // Only a superadmin may demote a blocked superadmin here. A missing or
             // invalid choice falls back to retain, so a crafted request can never
             // demote an account silently.
@@ -297,6 +312,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim($_POST['email'] ?? '');
         $isSelfEdit = $targetUserId === $currentUserId;
         $profileErrors = [];
+        $newPassword = (string)($_POST['new_password'] ?? '');
+        $newPasswordHash = null;
+        if ($newPassword !== '') {
+            if (!$isSuperAdmin && !$isSelfEdit) {
+                $profileErrors[] = 'Only a super administrator may change another account password.';
+            } elseif (strlen($newPassword) < 8 || strlen($newPassword) > 50 || preg_match('/\s/', $newPassword) || !preg_match('/[A-Z]/', $newPassword) || !preg_match('/[a-z]/', $newPassword) || !preg_match('/\d/', $newPassword) || !preg_match('/[^A-Za-z0-9]/', $newPassword)) {
+                $profileErrors[] = 'New password must be 8-50 characters with uppercase, lowercase, number, special character, and no spaces.';
+            } else {
+                $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+            }
+        }
 
         // Personal and address details are only editable on the signed-in
         // account, so editing somebody else never blanks out those columns.
@@ -417,14 +443,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // The account list renders other super administrators as
                 // "Inactive" while one is on duty; that display-only label must
                 // not be written back as a real status change.
-                if (in_array($postedStatus, ['pending', 'active', 'blocked'], true)) {
+                $canUpdateTargetStatus = $canApprove && ($isSuperAdmin || ($targetRole === 'user' && $role === 'user'));
+                if (!$canUpdateTargetStatus) {
+                    $status = in_array($targetStatus, ['pending', 'active', 'blocked'], true) ? $targetStatus : 'pending';
+                } elseif (in_array($postedStatus, ['pending', 'active', 'blocked'], true)) {
                     $status = $postedStatus;
                 } else {
                     $status = in_array($targetStatus, ['pending', 'active', 'blocked'], true) ? $targetStatus : 'pending';
                 }
-                $privileges = $normalizePrivileges($_POST['privileges'] ?? ['read_users']);
-                if (!$isSuperAdmin) {
-                    $privileges = implode(',', array_diff(explode(',', $privileges), ['delete_accounts']));
+                if ($isSuperAdmin) {
+                    $privileges = $normalizePrivileges($_POST['privileges'] ?? ['read_users']);
+                } else {
+                    $privileges = $targetPrivileges;
                 }
 
                 // username and email are UNIQUE, so check before writing.
@@ -442,16 +472,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($duplicateId) {
                     $accountMessage = 'The username or email is already in use.';
                 } else {
+                    $passwordSetSql = $newPasswordHash !== null ? ', password_hash = ?' : '';
                     if ($isSelfEdit) {
-                        $stmt = mysqli_prepare($connect, "UPDATE users SET first_name = ?, middle_name = ?, last_name = ?, extension_name = ?, date_of_birth = ?, age = ?, sex = ?, street = ?, barangay = ?, city_municipality = ?, province = ?, country = ?, zip_code = ?, username = ?, email = ?, role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?");
+                        $selfUpdateSql = "UPDATE users SET first_name = ?, middle_name = ?, last_name = ?, extension_name = ?, date_of_birth = ?, age = ?, sex = ?, street = ?, barangay = ?, city_municipality = ?, province = ?, country = ?, zip_code = ?, username = ?, email = ?" . $passwordSetSql . ", role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?";
+                        $stmt = mysqli_prepare($connect, $selfUpdateSql);
                         if ($stmt) {
-                            $selfTypes = str_repeat('s', 20);
-                            mysqli_stmt_bind_param($stmt, $selfTypes, $firstName, $middleName, $lastName, $extensionName, $dateOfBirth, $age, $sex, $street, $barangay, $city, $province, $country, $zipCode, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
+                            if ($newPasswordHash !== null) {
+                                $selfTypes = str_repeat('s', 21);
+                                mysqli_stmt_bind_param($stmt, $selfTypes, $firstName, $middleName, $lastName, $extensionName, $dateOfBirth, $age, $sex, $street, $barangay, $city, $province, $country, $zipCode, $username, $email, $newPasswordHash, $role, $status, $privileges, $currentUserId, $targetUserId);
+                            } else {
+                                $selfTypes = str_repeat('s', 20);
+                                mysqli_stmt_bind_param($stmt, $selfTypes, $firstName, $middleName, $lastName, $extensionName, $dateOfBirth, $age, $sex, $street, $barangay, $city, $province, $country, $zipCode, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
+                            }
                         }
                     } else {
-                        $stmt = mysqli_prepare($connect, "UPDATE users SET first_name = ?, last_name = ?, username = ?, email = ?, role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?");
+                        $otherUpdateSql = "UPDATE users SET first_name = ?, last_name = ?, username = ?, email = ?" . $passwordSetSql . ", role = ?, approval_status = ?, privileges = ?, updated_by = ? WHERE user_id = ?";
+                        $stmt = mysqli_prepare($connect, $otherUpdateSql);
                         if ($stmt) {
-                            mysqli_stmt_bind_param($stmt, 'sssssssss', $firstName, $lastName, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
+                            if ($newPasswordHash !== null) {
+                                mysqli_stmt_bind_param($stmt, 'ssssssssss', $firstName, $lastName, $username, $email, $newPasswordHash, $role, $status, $privileges, $currentUserId, $targetUserId);
+                            } else {
+                                mysqli_stmt_bind_param($stmt, 'sssssssss', $firstName, $lastName, $username, $email, $role, $status, $privileges, $currentUserId, $targetUserId);
+                            }
                         }
                     }
 
@@ -464,8 +506,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $logDetails = ($targetRole !== 'superadmin' && $role === 'superadmin')
                                 ? 'Promoted account ' . $accountIdentity . ' from ' . $targetRole . ' to super administrator'
                                 : 'Edited account ' . $accountIdentity . ' [' . $role . ']';
+                            if ($newPasswordHash !== null) { $logDetails .= ' and password changed'; }
                             activity_log_event($connect, $currentUserId, $actorName, $_SESSION['auth_role'] ?? 'admin', 'Account Management', $logDetails, $targetUserId);
-                            $accountMessage = 'Account updated successfully.';
+                            $accountMessage = $newPasswordHash !== null ? 'Account and password updated successfully.' : 'Account updated successfully.';
                         } else {
                             $accountMessage = 'Unable to save the account changes. The username or email may already be in use.';
                         }
@@ -568,32 +611,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? 'read_users,manage_users,approve_users,update_accounts,delete_accounts'
                     : ($role === 'admin' ? 'read_users,manage_users,approve_users,update_accounts' : 'read_users');
                 $isActive = 1;
+                $onboardingRequired = 1;
 
-                $createStmt = mysqli_prepare($connect, "INSERT INTO users (user_id, first_name, middle_name, last_name, extension_name, date_of_birth, age, sex, street, barangay, city_municipality, province, country, zip_code, username, email, password_hash, q1, a1, q2, a2, q3, a3, role, approval_status, privileges, created_by, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $createStmt = mysqli_prepare($connect, "INSERT INTO users (user_id, first_name, middle_name, last_name, extension_name, date_of_birth, age, sex, street, barangay, city_municipality, province, country, zip_code, username, email, password_hash, q1, a1, q2, a2, q3, a3, role, approval_status, privileges, created_by, is_active, onboarding_required) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 if ($createStmt) {
-                    mysqli_stmt_bind_param($createStmt, 'ssssssissssssssssssssssssssi', $userId, $firstName, $middleName, $lastName, $extensionName, $dateOfBirth, $age, $sex, $street, $barangay, $city, $province, $country, $zipCode, $username, $email, $passwordHash, $q1, $a1, $q2, $a2, $q3, $a3, $role, $approvalStatus, $privileges, $currentUserId, $isActive);
-                    $created = mysqli_stmt_execute($createStmt);
+                    mysqli_stmt_bind_param($createStmt, 'ssssssissssssssssssssssssssii', $userId, $firstName, $middleName, $lastName, $extensionName, $dateOfBirth, $age, $sex, $street, $barangay, $city, $province, $country, $zipCode, $username, $email, $passwordHash, $q1, $a1, $q2, $a2, $q3, $a3, $role, $approvalStatus, $privileges, $currentUserId, $isActive, $onboardingRequired);
+                    $transactionStarted = mysqli_begin_transaction($connect);
+                    $created = $transactionStarted && mysqli_stmt_execute($createStmt);
                     if (!$created) {
                         error_log('Administrator creation failed: ' . mysqli_stmt_error($createStmt));
                     }
                     mysqli_stmt_close($createStmt);
                     if ($created) {
-                        mysqli_query($connect, "UPDATE users SET onboarding_required = 1 WHERE user_id = '" . mysqli_real_escape_string($connect, $userId) . "'");
-                        $credentialsSent = send_account_credentials($email, $username, $password);
-                        $verifyStmt = mysqli_prepare($connect, "SELECT role FROM users WHERE user_id = ? LIMIT 1");
-                        $verifiedRole = null;
-                        if ($verifyStmt) {
-                            mysqli_stmt_bind_param($verifyStmt, 's', $userId);
-                            mysqli_stmt_execute($verifyStmt);
-                            $verifyResult = mysqli_stmt_get_result($verifyStmt);
-                            $verified = $verifyResult ? mysqli_fetch_assoc($verifyResult) : null;
-                            $verifiedRole = $verified['role'] ?? null;
-                            mysqli_stmt_close($verifyStmt);
+                        $stageStmt = mysqli_prepare($connect, "INSERT INTO staged_accounts (user_id) VALUES (?)");
+                        $staged = false;
+                        if ($stageStmt) {
+                            mysqli_stmt_bind_param($stageStmt, 's', $userId);
+                            $staged = mysqli_stmt_execute($stageStmt);
+                            if (!$staged) {
+                                error_log('Staged account registration failed: ' . mysqli_stmt_error($stageStmt));
+                            }
+                            mysqli_stmt_close($stageStmt);
+                        } else {
+                            error_log('Staged account registration prepare failed: ' . mysqli_error($connect));
                         }
-                        $accountMessage = $verifiedRole === $role
-                            ? 'Account is Created. User ID: ' . $userId . ($credentialsSent ? ' The mail server accepted the credentials email; ask the recipient to check Inbox, Spam, or All Mail.' : ' The account was created, but SMTP failed. Check the PHP error log for the SMTP error.')
-                            : 'The account was created, but its role was not saved correctly.';
+                        if ($staged && mysqli_commit($connect)) {
+                            $credentialsSent = send_account_credentials($email, $username, $password);
+                            $verifyStmt = mysqli_prepare($connect, "SELECT role FROM users WHERE user_id = ? LIMIT 1");
+                            $verifiedRole = null;
+                            if ($verifyStmt) {
+                                mysqli_stmt_bind_param($verifyStmt, 's', $userId);
+                                mysqli_stmt_execute($verifyStmt);
+                                $verifyResult = mysqli_stmt_get_result($verifyStmt);
+                                $verified = $verifyResult ? mysqli_fetch_assoc($verifyResult) : null;
+                                $verifiedRole = $verified['role'] ?? null;
+                                mysqli_stmt_close($verifyStmt);
+                            }
+                            $accountMessage = $verifiedRole === $role
+                                ? 'Account is Created. User ID: ' . $userId . ($credentialsSent ? ' The mail server accepted the credentials email; ask the recipient to check Inbox, Spam, or All Mail.' : ' The account was created, but SMTP failed. Check the PHP error log for the SMTP error.')
+                                : 'The account was created, but its role was not saved correctly.';
+                        } else {
+                            mysqli_rollback($connect);
+                            $accountMessage = 'Unable to add the account to staged accounts.';
+                        }
                     } else {
+                        if ($transactionStarted) {
+                            mysqli_rollback($connect);
+                        }
                         $accountMessage = 'Unable to create the account.';
                     }
                 } else {
@@ -643,8 +707,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'request_delete' && !$isSuperAdmin && $canManage) {
         $reason = trim((string)($_POST['reason'] ?? ''));
-        if ($targetUserId === '' || $targetIsSuperAdmin) {
-            $accountMessage = 'Choose a valid user account to request for deletion.';
+        if ($targetUserId === '' || $targetIsSuperAdmin || $targetUserId === $currentUserId) {
+            $accountMessage = $targetUserId === $currentUserId ? 'You cannot request deletion of your own account.' : 'Choose a valid user account to request for deletion.';
         } elseif ($reason === '' || strlen($reason) > 1000) {
             $accountMessage = 'Enter a deletion reason of 1 to 1000 characters.';
         } elseif (!filter_var($targetEmail, FILTER_VALIDATE_EMAIL)) {
@@ -766,6 +830,16 @@ $filterStatus = trim($_GET['status'] ?? '');
 $isMyAccountView = ($_GET['view'] ?? '') === 'my-account';
 $isDeleteRequestsView = ($_GET['view'] ?? '') === 'delete-requests';
 $isActivityLogsView = ($_GET['view'] ?? '') === 'activity-logs';
+$isStagedAccountsView = $isSuperAdmin && ($_GET['view'] ?? '') === 'staged-accounts';
+$stagedAccountCount = 0;
+if ($isSuperAdmin) {
+    $stagedResult = mysqli_query($connect, "SELECT COUNT(*) AS staged_count FROM staged_accounts");
+    if ($stagedResult) {
+        $stagedSummary = mysqli_fetch_assoc($stagedResult);
+        $stagedAccountCount = (int)($stagedSummary['staged_count'] ?? 0);
+        mysqli_free_result($stagedResult);
+    }
+}
 if (!in_array($filterRole, ['user', 'admin', 'superadmin'], true)) {
     $filterRole = '';
 }
@@ -784,7 +858,11 @@ if ($summaryResult && ($summary = mysqli_fetch_assoc($summaryResult))) {
     $blockedAccounts = (int)($summary['blocked_accounts'] ?? 0);
     mysqli_free_result($summaryResult);
 }
-$sql = "SELECT * FROM users WHERE onboarding_required = 0" . ($isSuperAdmin ? '' : " AND role <> 'superadmin'");
+if ($isStagedAccountsView) {
+    $sql = "SELECT users.*, EXISTS (SELECT 1 FROM activity_logs AS onboarding_log WHERE onboarding_log.user_id = users.user_id AND onboarding_log.section = 'Administrator Onboarding') AS onboarding_started FROM users WHERE users.onboarding_required = 1 AND users.user_id IN (SELECT user_id FROM staged_accounts)";
+} else {
+    $sql = "SELECT * FROM users WHERE onboarding_required = 0" . ($isSuperAdmin ? '' : " AND role <> 'superadmin'");
+}
 $bindTypes = '';
 $params = [];
 if ($filterUserId !== '') {
@@ -971,7 +1049,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $isSuperAdmin ? 'Super Admin Panel' : 'Admin Panel'; ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-        <link rel="stylesheet" href="../css/admin.css?v=1.9">
+        <link rel="stylesheet" href="../css/admin.css?v=2.0">
 </head>
 <body class="<?php echo $isSuperAdmin ? 'super-admin-page' : 'admin-page'; ?>">
     <div class="admin-wrap">
@@ -992,11 +1070,12 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     </div>
                 </div>
                 <nav class="sidebar-nav">
-                    <a class="sidebar-link <?php echo !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView ? 'active' : ''; ?>" href="?status=all#dashboard">Dashboard</a>
+                    <a class="sidebar-link <?php echo !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView ? 'active' : ''; ?>" href="?status=all#dashboard">Dashboard</a>
                     <a class="sidebar-link <?php echo $filterStatus === 'pending' ? 'active' : ''; ?>" href="?status=pending#accounts">Pending Accounts</a>
                     <a class="sidebar-link <?php echo $filterStatus === 'blocked' ? 'active' : ''; ?>" href="?status=blocked#accounts">Blocked Accounts</a>
                     <a class="sidebar-link <?php echo $isMyAccountView ? 'active' : ''; ?>" href="?view=my-account#my-account">My Account</a>
-                    <a class="sidebar-link <?php echo !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && in_array($filterStatus, ['', 'all'], true) ? 'active' : ''; ?>" href="?status=all#accounts">Account Management</a>
+                    <a class="sidebar-link <?php echo !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView && in_array($filterStatus, ['', 'all'], true) ? 'active' : ''; ?>" href="?status=all#accounts">Account Management</a>
+                    <?php if ($isSuperAdmin): ?><a class="sidebar-link <?php echo $isStagedAccountsView ? 'active' : ''; ?>" href="?view=staged-accounts#accounts">Staged Accounts<?php if ($stagedAccountCount > 0): ?> <span class="request-count"><?php echo $stagedAccountCount; ?></span><?php endif; ?></a><?php endif; ?>
                     <?php if ($isSuperAdmin): ?><a class="sidebar-link <?php echo $isDeleteRequestsView ? 'active' : ''; ?>" href="?view=delete-requests#delete-requests">Delete Requests<?php if ($pendingDeleteRequests > 0): ?> <span class="request-count"><?php echo $pendingDeleteRequests; ?></span><?php endif; ?></a><?php endif; ?>
                     <a class="sidebar-link <?php echo $isActivityLogsView ? 'active' : ''; ?>" href="?view=activity-logs#activity-logs">Activity Logs</a>
                 </nav>
@@ -1006,7 +1085,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             </aside>
 
             <main class="dashboard-content">
-        <?php if (!$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView): ?>
+        <?php if (!$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView && !in_array($filterStatus, ['pending', 'blocked'], true)): ?>
         <section id="dashboard" class="summary-grid" aria-label="Account summary">
             <div class="summary-card pending-card">
                 <span class="summary-label">Pending Accounts</span>
@@ -1052,14 +1131,19 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
         <?php endif; ?>
 
         <?php if (!$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView): ?>
+        <?php if (!$isStagedAccountsView && !in_array($filterStatus, ['pending', 'blocked'], true)): ?>
         <section class="panel" id="accounts">
             <div class="panel-header">
-                <h2>Account Management</h2>
+                <div>
+                    <h2><?php echo $isStagedAccountsView ? 'Staged Accounts' : 'Account Management'; ?></h2>
+                    <?php if ($isStagedAccountsView): ?><p class="staged-accounts-note">These accounts stay here until all three onboarding steps are complete. In progress means the account has signed in and started setup.</p><?php endif; ?>
+                </div>
                 <?php if ($isSuperAdmin): ?>
                     <button type="button" class="primary-action add-admin-action open-create-modal" aria-label="Add administrator">+</button>
                 <?php endif; ?>
             </div>
             <form method="GET" class="filter-form">
+                <?php if ($isStagedAccountsView): ?><input type="hidden" name="view" value="staged-accounts"><?php endif; ?>
                 <div class="form-group">
                     <input type="text" name="user_id" value="<?php echo htmlspecialchars($filterUserId); ?>" placeholder="Search User ID">
                 </div>
@@ -1085,34 +1169,45 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                 <button type="submit">Filter</button>
             </form>
         </section>
+        <?php endif; ?>
 
         <section class="panel" id="account-list">
             <div class="panel-header">
-                <h2><?php echo $filterStatus === 'pending' ? 'Pending Accounts' : ($filterStatus === 'blocked' ? 'Blocked Accounts' : 'Account Management'); ?></h2>
+                <h2><?php echo $isStagedAccountsView ? 'Staged Accounts' : ($filterStatus === 'pending' ? 'Pending Accounts' : ($filterStatus === 'blocked' ? 'Blocked Accounts' : 'Account Management')); ?></h2>
             </div>
             <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
                         <th>User ID</th>
-                        <th>Name</th>
+                        <?php if (!$isStagedAccountsView): ?><th>Name</th><?php endif; ?>
                         <th>Username</th>
                         <th>Email</th>
                         <th>Role</th>
-                        <th>Status</th>
+                        <?php if ($isStagedAccountsView): ?><th>Setup</th><?php endif; ?>
+                        <th><?php echo $isStagedAccountsView ? 'Account Status' : 'Status'; ?></th>
+                        <?php if ($isStagedAccountsView): ?><th>Created</th><?php endif; ?>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
+                    <?php if (!$accounts): ?>
+                        <tr><td colspan="<?php echo $isStagedAccountsView ? '8' : '7'; ?>"><?php echo $isStagedAccountsView ? 'No staged accounts found.' : 'No accounts found.'; ?></td></tr>
+                    <?php endif; ?>
                     <?php foreach ($accounts as $user): ?>
                         <tr>
                             <td><?php echo htmlspecialchars($user['user_id'] ?? ''); ?></td>
-                            <td><?php echo htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')); ?></td>
+                            <?php if (!$isStagedAccountsView): ?><td><?php echo htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')); ?></td><?php endif; ?>
                             <td><?php echo htmlspecialchars($user['username'] ?? ''); ?></td>
                             <td><?php echo htmlspecialchars($user['email'] ?? ''); ?></td>
                             <td><?php echo htmlspecialchars($user['role'] ?? 'user'); ?></td>
-                            <?php $displayStatus = account_display_status($user); ?>
+                            <?php if ($isStagedAccountsView): ?><td><?php echo !empty($user['onboarding_started']) ? 'In progress' : 'Not started'; ?></td><?php endif; ?>
+                            <?php $displayStatus = $isStagedAccountsView ? (string)($user['approval_status'] ?? 'pending') : account_display_status($user); ?>
                             <td class="status <?php echo htmlspecialchars($displayStatus); ?>"><?php echo htmlspecialchars(ucfirst($displayStatus)); ?></td>
+                            <?php if ($isStagedAccountsView): ?>
+                                <?php $createdTimestamp = strtotime((string)($user['created_at'] ?? '')); ?>
+                                <td><?php echo $createdTimestamp ? htmlspecialchars(date('M j, Y', $createdTimestamp)) : 'Not available'; ?></td>
+                            <?php endif; ?>
                             <td class="action-cell">
                                 <div class="action-menu">
                                     <button type="button" class="action-menu-toggle" aria-label="Open actions for <?php echo htmlspecialchars($user['username'] ?? 'user'); ?>" aria-haspopup="menu" aria-expanded="false">
@@ -1139,7 +1234,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                                         data-zip-code="<?php echo htmlspecialchars($user['zip_code'] ?? '', ENT_QUOTES); ?>"
                                         data-role="<?php echo htmlspecialchars($user['role'] ?? 'user', ENT_QUOTES); ?>"
                                         data-privileges="<?php echo htmlspecialchars($user['privileges'] ?? '', ENT_QUOTES); ?>"
-                                        data-status="<?php echo htmlspecialchars(ucfirst(account_display_status($user)), ENT_QUOTES); ?>"
+                                        data-status="<?php echo htmlspecialchars(ucfirst((string)($user['approval_status'] ?? 'pending')), ENT_QUOTES); ?>"
                                         data-created-at="<?php echo htmlspecialchars($user['created_at'] ?? '', ENT_QUOTES); ?>">
                                         <span>View Profile</span><i class="fa-solid fa-eye" aria-hidden="true"></i>
                                     </button>
@@ -1149,15 +1244,16 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                                     <?php if ($canApprove && ($user['approval_status'] ?? 'pending') === 'pending'): ?>
                                         <button type="button" class="action-modal-trigger success" data-action="approve_account" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-action-label="approve">Approve</button>
                                     <?php endif; ?>
-                                    <?php if ($canApprove && ($user['approval_status'] ?? 'pending') === 'blocked'): ?>
+                                    <?php $canChangeTargetStatus = $canApprove && ($isSuperAdmin || ($user['role'] ?? 'user') === 'user'); ?>
+                                    <?php if ($canChangeTargetStatus && ($user['approval_status'] ?? 'pending') === 'blocked'): ?>
                                         <button type="button" class="action-modal-trigger success" data-action="unblock_account" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-target-role="<?php echo htmlspecialchars($user['role'] ?? '', ENT_QUOTES); ?>" data-action-label="unblock" <?php echo ($user['user_id'] ?? '') === $currentUserId ? 'disabled' : ''; ?>>Unblock</button>
-                                    <?php elseif ($canApprove): ?>
+                                    <?php elseif ($canChangeTargetStatus): ?>
                                         <button type="button" class="action-modal-trigger" data-action="block_account" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-action-label="block" <?php echo ($user['user_id'] ?? '') === $currentUserId ? 'disabled' : ''; ?>>Block</button>
                                     <?php endif; ?>
                                     <?php if ($isSuperAdmin): ?>
                                         <button type="button" class="action-modal-trigger danger" data-action="delete_account" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-action-label="delete" <?php echo ($user['user_id'] ?? '') === $currentUserId ? 'disabled' : ''; ?>>Delete</button>
                                         <button type="button" class="action-modal-trigger" data-action="reset_password" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-action-label="reset password" <?php echo ($user['user_id'] ?? '') === $currentUserId ? 'disabled' : ''; ?>><i class="fa-solid fa-key" aria-hidden="true"></i> Reset Password</button>
-                                    <?php elseif ($canManage): ?>
+                                    <?php elseif ($canManage && ($user['user_id'] ?? '') !== $currentUserId): ?>
                                     <form method="POST">
                                         <input type="hidden" name="action" value="request_delete">
                                         <input type="hidden" name="user_id" value="<?php echo htmlspecialchars($user['user_id'] ?? ''); ?>">
@@ -1176,7 +1272,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
         </section>
         <?php endif; ?>
 
-        <?php if ($isSuperAdmin && !$isActivityLogsView && ($isDeleteRequestsView || count($deleteRequests) > 0)): ?>
+        <?php if ($isSuperAdmin && $isDeleteRequestsView): ?>
         <section class="panel" id="delete-requests">
             <div class="panel-header">
                 <h2>Delete Requests</h2>
@@ -1475,7 +1571,12 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                         <p class="role-cap-note" id="update-role-cap-note"<?php echo $superadminSlotsFull ? '' : ' hidden'; ?>>Two super administrators are already active. Block one to enable this option.</p>
                         <?php endif; ?>
                     </div>
+                    <div class="form-group" id="update-new-password-group">
+                        <label for="update-new-password">New Password</label>
+                        <input id="update-new-password" type="password" name="new_password" minlength="8" maxlength="50" autocomplete="new-password">
+                    </div>
                     <input type="hidden" id="update-status" name="approval_status" value="">
+                    <?php if ($isSuperAdmin): ?>
                     <div class="form-group privilege-box">
                         <label>Privileges</label>
                         <div class="checkbox-grid">
@@ -1483,9 +1584,10 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                             <label><input type="checkbox" name="privileges[]" value="manage_users"> Manage Users</label>
                             <label><input type="checkbox" name="privileges[]" value="approve_users"> Approve Users</label>
                             <label><input type="checkbox" name="privileges[]" value="update_accounts"> Update Accounts</label>
-                            <?php if ($isSuperAdmin): ?><label><input type="checkbox" name="privileges[]" value="delete_accounts"> Delete Accounts</label><?php endif; ?>
+                            <label><input type="checkbox" name="privileges[]" value="delete_accounts"> Delete Accounts</label>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="edit-form-actions">
@@ -1575,8 +1677,21 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                                 </div>
                                 <div id="delete-reason-fields" hidden>
                                     <label for="delete-action-reason">Reason for account deletion</label>
-                                    <textarea name="reason" id="delete-action-reason" rows="4" maxlength="1000" placeholder="Explain why this account is being deleted" aria-describedby="delete-reason-help"></textarea>
-                                    <small id="delete-reason-help">This explanation will be included in the email sent to the user.</small>
+                                    <div class="delete-reason-suggestion-group">
+                                        <label class="delete-reason-suggestion-label" for="delete-reason-template">Suggested reasons</label>
+                                        <select id="delete-reason-template">
+                                            <option value="">Choose a suggested reason</option>
+                                            <option value="Account is no longer needed">Account is no longer needed</option>
+                                            <option value="Account holder requested deletion">Account holder requested deletion</option>
+                                            <option value="Confirmed violation of account policies">Confirmed violation of account policies</option>
+                                            <option value="Account created by mistake">Account created by mistake</option>
+                                            <option value="other">Other reason</option>
+                                        </select>
+                                    </div>
+                                    <div id="delete-custom-reason-group" hidden>
+                                        <textarea name="reason" id="delete-action-reason" rows="4" maxlength="1000" placeholder="Explain why this account is being deleted" aria-describedby="delete-reason-help"></textarea>
+                                        <small id="delete-reason-help">This explanation will be included in the email sent to the user.</small>
+                                    </div>
                                 </div>
                                 <div class="modal-actions">
                                     <button type="button" class="modal-secondary back-action-password">Back</button>
@@ -1723,6 +1838,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                 }
             }, true);
 
+
             document.querySelectorAll('.edit-user-button').forEach(function (button) {
                 button.addEventListener('click', function () {
                     var profileButton = button.closest('.action-menu').querySelector('.view-user-button');
@@ -1749,6 +1865,10 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     var targetRole = profileButton.getAttribute('data-role') || 'user';
                     var targetId = profileButton.getAttribute('data-user-id') || '';
                     var isOwnAccount = targetId === currentUserId;
+                    var canChangeTargetPassword = isOwnAccount || <?php echo $isSuperAdmin ? 'true' : 'false'; ?>;
+                    var passwordGroupDisplay = canChangeTargetPassword ? '' : 'none';
+                    document.getElementById('update-new-password-group').style.display = passwordGroupDisplay;
+                    document.getElementById('update-new-password').value = '';
                     editIsOwnAccount = isOwnAccount;
                     setEditAddressRequired(isOwnAccount);
                     setEditStep(1);
@@ -1793,6 +1913,18 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             document.querySelector('.close-create-modal')?.addEventListener('click', function () { toggleModal('create-account', false); });
             document.querySelector('.close-details-modal')?.addEventListener('click', function () { toggleModal('user-details-modal', false); });
             document.querySelector('.close-edit-modal')?.addEventListener('click', function () { toggleModal('edit-account-modal', false); });
+            var reasonTemplate = document.getElementById('delete-reason-template');
+            var customReasonGroup = document.getElementById('delete-custom-reason-group');
+            var reasonField = document.getElementById('delete-action-reason');
+            reasonTemplate?.addEventListener('change', function () {
+                if (!customReasonGroup || !reasonField) return;
+                var selectedReason = reasonTemplate.value;
+                var isOtherReason = selectedReason === 'other';
+                customReasonGroup.hidden = !isOtherReason;
+                reasonField.required = isOtherReason;
+                reasonField.value = isOtherReason ? '' : selectedReason;
+                if (isOtherReason) reasonField.focus();
+            });
             document.querySelectorAll('.action-modal-trigger').forEach(function (trigger) {
                 trigger.addEventListener('click', function () {
                     var action = trigger.getAttribute('data-action');
@@ -1826,8 +1958,13 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     var isDeleteAction = action === 'delete_account';
                     var deleteReasonFields = document.getElementById('delete-reason-fields');
                     var deleteReason = document.getElementById('delete-action-reason');
+                    var deleteReasonTemplate = document.getElementById('delete-reason-template');
+                    var customReasonGroup = document.getElementById('delete-custom-reason-group');
                     deleteReasonFields.hidden = !isDeleteAction;
-                    deleteReason.required = isDeleteAction;
+                    deleteReasonTemplate.required = isDeleteAction;
+                    deleteReasonTemplate.value = '';
+                    customReasonGroup.hidden = true;
+                    deleteReason.required = false;
                     deleteReason.value = '';
                     var roleChoice = document.getElementById('unblock-role-choice');
                     var showRoleChoice = action === 'unblock_account' && trigger.getAttribute('data-target-role') === 'superadmin';
@@ -1892,6 +2029,6 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             });
         </script>
     <script src="../javascript/register.js"></script>
-    <script src="../javascript/admin_update.js?v=3.1"></script>
+    <script src="../javascript/admin_update.js?v=3.3"></script>
 </body>
 </html>

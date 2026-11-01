@@ -95,11 +95,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array($q1, $questions, true) || !in_array($q2, $questions, true) || !in_array($q3, $questions, true) || count(array_unique([$q1, $q2, $q3])) < 3 || $a1 === '' || $a2 === '' || $a3 === '') {
             $message = 'Choose three different questions and answer all of them.';
         } else {
-            $update = mysqli_prepare($connect, "UPDATE users SET q1 = ?, a1 = ?, q2 = ?, a2 = ?, q3 = ?, a3 = ?, onboarding_required = 0 WHERE user_id = ?");
             $h1 = password_hash($a1, PASSWORD_DEFAULT); $h2 = password_hash($a2, PASSWORD_DEFAULT); $h3 = password_hash($a3, PASSWORD_DEFAULT);
-            mysqli_stmt_bind_param($update, 'sssssss', $q1, $h1, $q2, $h2, $q3, $h3, $userId);
-            $ok = mysqli_stmt_execute($update);
-            mysqli_stmt_close($update);
+            $transactionStarted = mysqli_begin_transaction($connect);
+            $ok = false;
+            if ($transactionStarted) {
+                $update = mysqli_prepare($connect, "UPDATE users SET q1 = ?, a1 = ?, q2 = ?, a2 = ?, q3 = ?, a3 = ?, onboarding_required = 0 WHERE user_id = ?");
+                $updated = false;
+                if ($update) {
+                    mysqli_stmt_bind_param($update, 'sssssss', $q1, $h1, $q2, $h2, $q3, $h3, $userId);
+                    $updated = mysqli_stmt_execute($update);
+                    mysqli_stmt_close($update);
+                }
+                $stageDelete = mysqli_prepare($connect, "DELETE FROM staged_accounts WHERE user_id = ?");
+                $stageRemoved = false;
+                if ($stageDelete) {
+                    mysqli_stmt_bind_param($stageDelete, 's', $userId);
+                    $stageRemoved = mysqli_stmt_execute($stageDelete);
+                    mysqli_stmt_close($stageDelete);
+                }
+                $ok = $updated && $stageRemoved && mysqli_commit($connect);
+                if (!$ok) {
+                    mysqli_rollback($connect);
+                }
+            }
             if ($ok) {
                 unset($_SESSION['onboarding_user_id'], $_SESSION['onboarding_stage']);
                 $destRole = $_SESSION['auth_role'] ?? 'user';

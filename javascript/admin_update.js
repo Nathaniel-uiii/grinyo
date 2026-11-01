@@ -1,4 +1,29 @@
 document.addEventListener('DOMContentLoaded', function() {
+    function validatePasswordField(field, allowBlank) {
+        var value = field.value;
+        if (allowBlank && value === '') {
+            clearErrorMessage(field.id);
+            return true;
+        }
+        if (/\s/.test(value)) {
+            showErrorMessage(field.id, 'Spaces are not allowed in password.');
+            return false;
+        }
+        if (value.length < 8) {
+            showErrorMessage(field.id, 'Password must be at least 8 characters long.');
+            return false;
+        }
+        if (value.length > 50) {
+            showErrorMessage(field.id, 'Password cannot exceed 50 characters.');
+            return false;
+        }
+        if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/[0-9]/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
+            showErrorMessage(field.id, 'Password needs uppercase, lowercase, number, and special character.');
+            return false;
+        }
+        clearErrorMessage(field.id);
+        return true;
+    }
     var form = document.querySelector('.update-form');
 
     var createForm = document.querySelector('.create-form');
@@ -18,25 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         function validateCreatePassword() {
-            var value = createPassword.value;
-            if (/\s/.test(value)) {
-                showErrorMessage(createPassword.id, 'Spaces are not allowed in password.');
-                return false;
-            }
-            if (value.length < 8) {
-                showErrorMessage(createPassword.id, 'Password must be at least 8 characters long.');
-                return false;
-            }
-            if (value.length > 50) {
-                showErrorMessage(createPassword.id, 'Password cannot exceed 50 characters.');
-                return false;
-            }
-            if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/[0-9]/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
-                showErrorMessage(createPassword.id, 'Password needs uppercase, lowercase, number, and special character.');
-                return false;
-            }
-            clearErrorMessage(createPassword.id);
-            return true;
+            return validatePasswordField(createPassword, false);
         }
 
         createUsername.addEventListener('input', validateCreateUsername);
@@ -55,8 +62,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (!form || typeof showErrorMessage !== 'function') return;
+    var updateNewPassword = document.getElementById('update-new-password');
+    if (updateNewPassword) {
+        updateNewPassword.addEventListener('input', function() {
+            validatePasswordField(updateNewPassword, true);
+        });
+        updateNewPassword.addEventListener('blur', function() {
+            validatePasswordField(updateNewPassword, true);
+        });
+        form.addEventListener('submit', function(event) {
+            if (!validatePasswordField(updateNewPassword, true)) event.preventDefault();
+        });
+    }
 
-    function validateUpdateId() {
+
         var field = document.getElementById('update-user-id');
         var value = field.value;
         if (value === '') {

@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS user_sessions;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS user_addresses;
 DROP TABLE IF EXISTS user_security_questions;
+DROP TABLE IF EXISTS staged_accounts;
 DROP TABLE IF EXISTS users;
 
 -- Users table: PK = user_id (xxxx-xxxx). Contains personal info, address, account, and security Q&A
@@ -50,6 +51,24 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_city (city_municipality),
     INDEX idx_province (province)
 );
+
+CREATE TABLE IF NOT EXISTS account_delete_requests (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    target_user_id VARCHAR(9) NOT NULL,
+    requested_by VARCHAR(9) NOT NULL,
+    reason VARCHAR(1000) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    reviewed_by VARCHAR(9) NULL,
+    reviewed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX (target_user_id),
+    INDEX (status)
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS staged_accounts (
+    user_id VARCHAR(9) NOT NULL PRIMARY KEY,
+    staged_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_staged_accounts_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS activity_logs (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

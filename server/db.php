@@ -48,6 +48,35 @@ foreach ($schemaColumns as $column => $definition) {
     }
 }
 
+$stagedTableResult = mysqli_query($connect, "CREATE TABLE IF NOT EXISTS staged_accounts (
+    user_id VARCHAR(9) NOT NULL PRIMARY KEY,
+    staged_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_staged_accounts_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+if (!$stagedTableResult) {
+    error_log('Staged accounts table creation failed: ' . mysqli_error($connect));
+} else {
+    $stagedBackfill = mysqli_query($connect, "INSERT IGNORE INTO staged_accounts (user_id) SELECT user_id FROM users WHERE onboarding_required = 1");
+    if (!$stagedBackfill) {
+        error_log('Staged accounts backfill failed: ' . mysqli_error($connect));
+    }
+}
+
+$deleteRequestsTableResult = mysqli_query($connect, "CREATE TABLE IF NOT EXISTS account_delete_requests (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    target_user_id VARCHAR(9) NOT NULL,
+    requested_by VARCHAR(9) NOT NULL,
+    reason VARCHAR(1000) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    reviewed_by VARCHAR(9) NULL,
+    reviewed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX (target_user_id),
+    INDEX (status)
+) ENGINE=InnoDB");
+if (!$deleteRequestsTableResult) {
+    error_log('Account delete request table creation failed: ' . mysqli_error($connect));
+}
 mysqli_query($connect, "CREATE TABLE IF NOT EXISTS activity_logs (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     session_key CHAR(32) NOT NULL UNIQUE,

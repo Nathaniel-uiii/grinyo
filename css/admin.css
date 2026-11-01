@@ -468,6 +468,10 @@ body {
     color: #fff;
 }
 
+.super-admin-page .staged-accounts-note {
+    color: #75658b;
+}
+
 .super-admin-page .panel,
 .super-admin-page .summary-card {
     border-color: #ded2f2;
@@ -705,7 +709,23 @@ body {
 .action-modal p { margin: 12px 0 22px; color: #596579; line-height: 1.5; }
 #delete-reason-fields { display: grid; gap: 8px; margin: 0 0 22px; }
 #delete-reason-fields[hidden] { display: none; }
+#delete-custom-reason-group { display: grid; gap: 8px; }
+#delete-custom-reason-group[hidden] { display: none; }
 #delete-reason-fields label { display: block; color: #334155; font-size: .88rem; font-weight: 700; }
+.delete-reason-suggestion-group { display: grid; gap: 6px; }
+#delete-reason-fields .delete-reason-suggestion-label { color: #64748b; font-size: .76rem; font-weight: 700; }
+#delete-reason-template {
+    width: 100%;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid #d6d0e2;
+    border-radius: 9px;
+    background: #fbfaff;
+    color: #55436d;
+    font: inherit;
+    font-size: .86rem;
+}
+#delete-reason-template:focus { outline: none; border-color: #7652a8; background: #fff; box-shadow: 0 0 0 4px rgba(118, 82, 168, .14); }
 #delete-action-reason {
     display: block;
     width: 100%;
@@ -1132,6 +1152,13 @@ body {
     margin-bottom: 20px;
     padding-bottom: 14px;
     border-bottom: 1px solid #e7edf4;
+}
+
+.staged-accounts-note {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 0.84rem;
+    line-height: 1.45;
 }
 
 .panel h2 {

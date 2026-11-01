@@ -1,6 +1,6 @@
 <?php
 // Simple login: prepared statements + password_verify + basic lockout
-include '../server/db.php';
+require_once __DIR__ . '/../server/db.php';
 require_once __DIR__ . '/../server/activity_log.php';
 require_once __DIR__ . '/../server/superadmin_duty.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
@@ -30,14 +30,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    // 1) Find the account by username (case-sensitive) or email.
+    // 1) Find the account by username or email using the database collation.
     // The role is always read from the database, never chosen by the user.
-    // Use BINARY for username to enforce case sensitivity. Email remains as-is.
-    $sqlUser = "SELECT user_id, first_name, middle_name, last_name, extension_name, username, email, password_hash, is_active, role, approval_status, privileges, onboarding_required FROM users WHERE (BINARY username = ? OR email = ?) LIMIT 1";
+    $sqlUser = "SELECT user_id, first_name, middle_name, last_name, extension_name, username, email, password_hash, is_active, role, approval_status, privileges, onboarding_required FROM users WHERE (username = ? OR email = ?) LIMIT 1";
     $stmtUser = mysqli_prepare($connect, $sqlUser);
+    if (!$stmtUser) {
+        error_log('Login account lookup prepare failed: ' . mysqli_error($connect));
+        header('Location: ./login.php?error=unavailable');
+        exit();
+    }
     mysqli_stmt_bind_param($stmtUser, 'ss', $login, $login);
-    mysqli_stmt_execute($stmtUser);
+    if (!mysqli_stmt_execute($stmtUser)) {
+        error_log('Login account lookup failed: ' . mysqli_stmt_error($stmtUser));
+        mysqli_stmt_close($stmtUser);
+        header('Location: ./login.php?error=unavailable');
+        exit();
+    }
     $resUser = mysqli_stmt_get_result($stmtUser);
+    if ($resUser === false) {
+        error_log('Login account lookup result failed: ' . mysqli_stmt_error($stmtUser));
+        mysqli_stmt_close($stmtUser);
+        header('Location: ./login.php?error=unavailable');
+        exit();
+    }
     $user = $resUser ? mysqli_fetch_assoc($resUser) : null;
     mysqli_stmt_close($stmtUser);
 
@@ -160,15 +175,15 @@ $jsBase = '../javascript';
                     <h1>Login</h1>
                 </header>
                 <div class="login-container">
-                    <form action="" method="POST" novalidate>
+                    <form action="./login.php" method="POST" novalidate>
                         <div class="form-group">
-                            <label for="username">Username</label>
-                            <input type="text" id="username" name="username" placeholder="Username" required value="<?php echo isset($_GET['u']) ? htmlspecialchars($_GET['u']) : '';?>">
+                            <label for="username">Username or email</label>
+                            <input type="text" id="username" name="username" placeholder="Username or email" autocomplete="username" required value="<?php echo isset($_GET['u']) ? htmlspecialchars($_GET['u']) : '';?>">
                         </div>
                         <div class="form-group">
                             <label for="password">Password</label>
                             <div class="password-wrapper">
-                                <input type="password" id="password" name="password" placeholder="Password" required>
+                                <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" required>
                                 <i class="fa-solid fa-eye-slash" id="eyeicon"></i>
                             </div>
                         </div>
