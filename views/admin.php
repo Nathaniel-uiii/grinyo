@@ -36,6 +36,7 @@ if ($currentPrivilegeStmt) {
 $_SESSION['auth_privileges'] = $currentPrivilegeString;
 $currentPrivileges = array_filter(array_map('trim', explode(',', $currentPrivilegeString)));
 $canApprove = $isSuperAdmin || in_array('approve_users', $currentPrivileges, true);
+$canBlock = $isSuperAdmin || in_array('block_users', $currentPrivileges, true);
 $canUpdate = $isSuperAdmin || in_array('update_accounts', $currentPrivileges, true);
 $canManage = $isSuperAdmin || in_array('manage_users', $currentPrivileges, true);
 $showCreateAccountResult = false;
@@ -76,6 +77,7 @@ function render_access_badges($privileges)
         'read_users' => 'Read',
         'manage_users' => 'Manage',
         'approve_users' => 'Approve',
+        'block_users' => 'Block',
         'update_accounts' => 'Edit',
         'delete_accounts' => 'Delete'
     ];
@@ -209,7 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $normalizePrivileges = function ($payload) {
-        $allowed = ['read_users', 'manage_users', 'approve_users', 'update_accounts', 'delete_accounts'];
+        $allowed = ['read_users', 'manage_users', 'approve_users', 'block_users', 'update_accounts', 'delete_accounts'];
         $selected = [];
         if (is_array($payload)) {
             foreach ($payload as $value) {
@@ -244,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'block_account') {
-        if ($canApprove && ($isSuperAdmin || $targetRole === 'user') && $targetUserId !== '' && $targetUserId !== $currentUserId) {
+        if ($canBlock && ($isSuperAdmin || $targetRole === 'user') && $targetUserId !== '' && $targetUserId !== $currentUserId) {
             $stmt = mysqli_prepare($connect, "UPDATE users SET approval_status = 'blocked', updated_by = ? WHERE user_id = ?");
             if ($stmt) {
                 mysqli_stmt_bind_param($stmt, 'ss', $currentUserId, $targetUserId);
@@ -258,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'unblock_account') {
-        if ($canApprove && ($isSuperAdmin || $targetRole === 'user') && $targetUserId !== '' && $targetUserId !== $currentUserId) {
+        if ($canBlock && ($isSuperAdmin || $targetRole === 'user') && $targetUserId !== '' && $targetUserId !== $currentUserId) {
             // Only a superadmin may demote a blocked superadmin here. A missing or
             // invalid choice falls back to retain, so a crafted request can never
             // demote an account silently.
@@ -274,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = null;
             } elseif ($demoteSuperadmin) {
                 $demotedRole = 'admin';
-                $demotedPrivileges = 'read_users,manage_users,approve_users,update_accounts';
+                $demotedPrivileges = 'read_users,manage_users,approve_users,block_users,update_accounts';
                 $stmt = mysqli_prepare($connect, "UPDATE users SET approval_status = 'active', role = ?, privileges = ?, updated_by = ? WHERE user_id = ? AND approval_status = 'blocked'");
                 if ($stmt) {
                     mysqli_stmt_bind_param($stmt, 'ssss', $demotedRole, $demotedPrivileges, $currentUserId, $targetUserId);
@@ -443,7 +445,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // The account list renders other super administrators as
                 // "Inactive" while one is on duty; that display-only label must
                 // not be written back as a real status change.
-                $canUpdateTargetStatus = $canApprove && ($isSuperAdmin || ($targetRole === 'user' && $role === 'user'));
+                $canUpdateTargetStatus = ($isSuperAdmin || ($targetRole === 'user' && $role === 'user')) && in_array($postedStatus, ['pending', 'active', 'blocked'], true) && ($postedStatus === $targetStatus || ($postedStatus === 'blocked' ? $canBlock : $canApprove));
                 if (!$canUpdateTargetStatus) {
                     $status = in_array($targetStatus, ['pending', 'active', 'blocked'], true) ? $targetStatus : 'pending';
                 } elseif (in_array($postedStatus, ['pending', 'active', 'blocked'], true)) {
@@ -608,8 +610,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $a3 = password_hash('manila', PASSWORD_DEFAULT);
                 $approvalStatus = 'active';
                 $privileges = $role === 'superadmin'
-                    ? 'read_users,manage_users,approve_users,update_accounts,delete_accounts'
-                    : ($role === 'admin' ? 'read_users,manage_users,approve_users,update_accounts' : 'read_users');
+                    ? 'read_users,manage_users,approve_users,block_users,update_accounts,delete_accounts'
+                    : ($role === 'admin' ? 'read_users,manage_users,approve_users,block_users,update_accounts' : 'read_users');
                 $isActive = 1;
                 $onboardingRequired = 1;
 
@@ -851,7 +853,7 @@ $pendingAccounts = 0;
 $blockedAccounts = 0;
 $totalUsers = 0;
 $accountVisibility = $isSuperAdmin ? '' : " WHERE role <> 'superadmin'";
-$summaryResult = mysqli_query($connect, "SELECT COUNT(*) AS total_users, SUM(CASE WHEN COALESCE(approval_status, 'pending') = 'pending' THEN 1 ELSE 0 END) AS pending_accounts, SUM(CASE WHEN approval_status = 'blocked' THEN 1 ELSE 0 END) AS blocked_accounts FROM users WHERE onboarding_required = 0" . ($isSuperAdmin ? '' : " AND role <> 'superadmin'"));
+$summaryResult = $canManage ? mysqli_query($connect, "SELECT COUNT(*) AS total_users, SUM(CASE WHEN COALESCE(approval_status, 'pending') = 'pending' THEN 1 ELSE 0 END) AS pending_accounts, SUM(CASE WHEN approval_status = 'blocked' THEN 1 ELSE 0 END) AS blocked_accounts FROM users WHERE onboarding_required = 0" . ($isSuperAdmin ? '' : " AND role <> 'superadmin'")) : false;
 if ($summaryResult && ($summary = mysqli_fetch_assoc($summaryResult))) {
     $totalUsers = (int)($summary['total_users'] ?? 0);
     $pendingAccounts = (int)($summary['pending_accounts'] ?? 0);
@@ -887,7 +889,7 @@ if (in_array($filterStatus, ['pending', 'active', 'blocked'], true)) {
 }
 $sql .= " ORDER BY created_at DESC";
 
-$stmt = mysqli_prepare($connect, $sql);
+$stmt = $canManage ? mysqli_prepare($connect, $sql) : false;
 if ($stmt) {
     if ($bindTypes !== '') {
         mysqli_stmt_bind_param($stmt, $bindTypes, ...$params);
@@ -1070,11 +1072,15 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                     </div>
                 </div>
                 <nav class="sidebar-nav">
+                    <?php if ($canManage): ?>
                     <a class="sidebar-link <?php echo !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView ? 'active' : ''; ?>" href="?status=all#dashboard">Dashboard</a>
                     <a class="sidebar-link <?php echo $filterStatus === 'pending' ? 'active' : ''; ?>" href="?status=pending#accounts">Pending Accounts</a>
                     <a class="sidebar-link <?php echo $filterStatus === 'blocked' ? 'active' : ''; ?>" href="?status=blocked#accounts">Blocked Accounts</a>
+                    <?php endif; ?>
                     <a class="sidebar-link <?php echo $isMyAccountView ? 'active' : ''; ?>" href="?view=my-account#my-account">My Account</a>
+                    <?php if ($canManage): ?>
                     <a class="sidebar-link <?php echo !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView && in_array($filterStatus, ['', 'all'], true) ? 'active' : ''; ?>" href="?status=all#accounts">Account Management</a>
+                    <?php endif; ?>
                     <?php if ($isSuperAdmin): ?><a class="sidebar-link <?php echo $isStagedAccountsView ? 'active' : ''; ?>" href="?view=staged-accounts#accounts">Staged Accounts<?php if ($stagedAccountCount > 0): ?> <span class="request-count"><?php echo $stagedAccountCount; ?></span><?php endif; ?></a><?php endif; ?>
                     <?php if ($isSuperAdmin): ?><a class="sidebar-link <?php echo $isDeleteRequestsView ? 'active' : ''; ?>" href="?view=delete-requests#delete-requests">Delete Requests<?php if ($pendingDeleteRequests > 0): ?> <span class="request-count"><?php echo $pendingDeleteRequests; ?></span><?php endif; ?></a><?php endif; ?>
                     <a class="sidebar-link <?php echo $isActivityLogsView ? 'active' : ''; ?>" href="?view=activity-logs#activity-logs">Activity Logs</a>
@@ -1085,7 +1091,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
             </aside>
 
             <main class="dashboard-content">
-        <?php if (!$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView && !in_array($filterStatus, ['pending', 'blocked'], true)): ?>
+        <?php if ($canManage && !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView && !$isStagedAccountsView && !in_array($filterStatus, ['pending', 'blocked'], true)): ?>
         <section id="dashboard" class="summary-grid" aria-label="Account summary">
             <div class="summary-card pending-card">
                 <span class="summary-label">Pending Accounts</span>
@@ -1099,6 +1105,11 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                 <span class="summary-label">Total Users</span>
                 <strong><?php echo $totalUsers; ?></strong>
             </div>
+        </section>
+        <?php endif; ?>
+        <?php if (!$canManage && !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView): ?>
+        <section class="panel permission-notice" role="status">
+            <p>Your account does not have the Manage Users privilege.</p>
         </section>
         <?php endif; ?>
 
@@ -1130,7 +1141,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
         </section>
         <?php endif; ?>
 
-        <?php if (!$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView): ?>
+        <?php if ($canManage && !$isMyAccountView && !$isDeleteRequestsView && !$isActivityLogsView): ?>
         <?php if (!$isStagedAccountsView && !in_array($filterStatus, ['pending', 'blocked'], true)): ?>
         <section class="panel" id="accounts">
             <div class="panel-header">
@@ -1244,7 +1255,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                                     <?php if ($canApprove && ($user['approval_status'] ?? 'pending') === 'pending'): ?>
                                         <button type="button" class="action-modal-trigger success" data-action="approve_account" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-action-label="approve">Approve</button>
                                     <?php endif; ?>
-                                    <?php $canChangeTargetStatus = $canApprove && ($isSuperAdmin || ($user['role'] ?? 'user') === 'user'); ?>
+                                    <?php $canChangeTargetStatus = $canBlock && ($isSuperAdmin || ($user['role'] ?? 'user') === 'user'); ?>
                                     <?php if ($canChangeTargetStatus && ($user['approval_status'] ?? 'pending') === 'blocked'): ?>
                                         <button type="button" class="action-modal-trigger success" data-action="unblock_account" data-user-id="<?php echo htmlspecialchars($user['user_id'] ?? '', ENT_QUOTES); ?>" data-target-role="<?php echo htmlspecialchars($user['role'] ?? '', ENT_QUOTES); ?>" data-action-label="unblock" <?php echo ($user['user_id'] ?? '') === $currentUserId ? 'disabled' : ''; ?>>Unblock</button>
                                     <?php elseif ($canChangeTargetStatus): ?>
@@ -1583,6 +1594,7 @@ $nextPrivilegedUserId = next_privileged_user_id($connect);
                             <label><input type="checkbox" name="privileges[]" value="read_users"> Read Users</label>
                             <label><input type="checkbox" name="privileges[]" value="manage_users"> Manage Users</label>
                             <label><input type="checkbox" name="privileges[]" value="approve_users"> Approve Users</label>
+                            <label><input type="checkbox" name="privileges[]" value="block_users"> Block Users</label>
                             <label><input type="checkbox" name="privileges[]" value="update_accounts"> Update Accounts</label>
                             <label><input type="checkbox" name="privileges[]" value="delete_accounts"> Delete Accounts</label>
                         </div>

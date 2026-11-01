@@ -170,8 +170,8 @@ function upsert_default_account($connect, $username, $password, $role, $employee
     return true;
 }
 
-$adminCreated = upsert_default_account($connect, 'Admin', 'Admin123', 'admin', 'ADM-0001', 'admin@ube.com', 'manage_users,approve_users,update_accounts');
-$superCreated = upsert_default_account($connect, 'superadmin', 'SuperAdmin123!', 'superadmin', 'EMP-0001', 'superadmin@ube.com', 'manage_users,approve_users,update_accounts,delete_accounts');
+$adminCreated = upsert_default_account($connect, 'Admin', 'Admin123', 'admin', 'ADM-0001', 'admin@ube.com', 'manage_users,approve_users,block_users,update_accounts');
+$superCreated = upsert_default_account($connect, 'superadmin', 'SuperAdmin123!', 'superadmin', 'EMP-0001', 'superadmin@ube.com', 'manage_users,approve_users,block_users,update_accounts,delete_accounts');
 
 if ($adminCreated) {
     echo "Admin account ready.<br>Username: Admin<br>Password: Admin123<br>Employee ID: ADM-0001";
